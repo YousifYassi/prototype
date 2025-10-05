@@ -1,0 +1,89 @@
+# Configuration for Unsafe Action Detection System
+
+# Dataset Configuration
+dataset:
+  name: "bdd100k"
+  root_dir: "datasets/bdd100k"
+  video_dir: "datasets/bdd100k/videos"
+  annotations_file: "datasets/bdd100k/annotations.json"
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+  
+# Unsafe Action Categories (customize based on your use case)
+unsafe_actions:
+  - "aggressive_driving"
+  - "tailgating"
+  - "unsafe_lane_change"
+  - "running_red_light"
+  - "distracted_driver"
+  - "speeding"
+  - "wrong_way_driving"
+  - "pedestrian_collision_risk"
+  - "near_miss"
+
+# Model Configuration
+model:
+  architecture: "video_action_detector"  # Options: video_action_detector, slowfast, i3d
+  backbone: "resnet50"  # Base CNN backbone
+  num_classes: 9  # Number of unsafe action categories + 1 safe class
+  num_frames: 16  # Number of frames to process at once
+  frame_interval: 2  # Sample every N frames
+  input_size: [224, 224]
+  dropout: 0.5
+  pretrained: true
+
+# Training Configuration
+training:
+  batch_size: 8
+  num_epochs: 50
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  optimizer: "adam"  # Options: adam, sgd, adamw
+  scheduler: "cosine"  # Options: cosine, step, plateau
+  warmup_epochs: 5
+  gradient_clip: 1.0
+  num_workers: 4
+  device: "cuda"  # Options: cuda, cpu, mps
+  
+# Data Augmentation
+augmentation:
+  random_crop: true
+  horizontal_flip: 0.5
+  color_jitter: 0.2
+  rotation: 10
+  temporal_crop: true
+  
+# Real-time Inference
+inference:
+  confidence_threshold: 0.7  # Minimum confidence to trigger alert
+  temporal_smoothing: true
+  smoothing_window: 5  # Number of frames for temporal smoothing
+  alert_cooldown: 3.0  # Seconds between alerts for same action
+  video_buffer_size: 32  # Frames to keep in buffer
+  fps: 30
+
+# Alert/Notification System
+alerts:
+  enabled: true
+  methods: ["console", "file", "webhook"]  # notification methods
+  log_file: "logs/alerts.log"
+  webhook_url: null  # Set to your webhook URL for notifications
+  save_clips: true  # Save video clips of unsafe actions
+  clip_duration: 5  # Seconds of video to save around detection
+  clips_dir: "output/alert_clips"
+
+# Logging
+logging:
+  level: "INFO"
+  save_dir: "logs"
+  tensorboard: true
+  tensorboard_dir: "runs"
+  save_frequency: 5  # Save model every N epochs
+
+# Checkpointing
+checkpointing:
+  save_dir: "checkpoints"
+  save_best_only: false
+  monitor: "val_accuracy"
+
