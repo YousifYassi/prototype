@@ -61,20 +61,20 @@ def test_webcam():
     cap = cv2.VideoCapture(0)
     
     if not cap.isOpened():
-        print("❌ Cannot access webcam")
+        print("[FAIL] Cannot access webcam")
         return False
     
-    print("✓ Webcam accessible")
+    print("[OK] Webcam accessible")
     
     # Capture a few frames
     for i in range(30):
         ret, frame = cap.read()
         if not ret:
-            print(f"❌ Failed to read frame {i+1}")
+            print(f"[FAIL] Failed to read frame {i+1}")
             cap.release()
             return False
     
-    print("✓ Webcam working properly")
+    print("[OK] Webcam working properly")
     cap.release()
     return True
 
@@ -99,9 +99,9 @@ def check_system():
     for module, name in packages.items():
         try:
             __import__(module)
-            print(f"  ✓ {name}")
+            print(f"  [OK] {name}")
         except ImportError:
-            print(f"  ❌ {name} - Not installed")
+            print(f"  [FAIL] {name} - Not installed")
     
     # Check GPU
     try:
@@ -117,20 +117,20 @@ def check_system():
     # Check config file
     print(f"\nConfiguration:")
     if Path('config.yaml').exists():
-        print(f"  ✓ config.yaml found")
+        print(f"  [OK] config.yaml found")
         with open('config.yaml', 'r') as f:
             config = yaml.safe_load(f)
             print(f"  Model: {config['model']['architecture']}")
             print(f"  Backbone: {config['model']['backbone']}")
     else:
-        print(f"  ❌ config.yaml not found")
+        print(f"  [FAIL] config.yaml not found")
     
     # Check directories
     print(f"\nDirectories:")
     dirs = ['datasets/bdd100k', 'checkpoints', 'logs', 'output']
     for dir_path in dirs:
         exists = Path(dir_path).exists()
-        status = "✓" if exists else "❌"
+        status = "[OK]" if exists else "[MISS]"
         print(f"  {status} {dir_path}")
     
     print("\n" + "="*50)

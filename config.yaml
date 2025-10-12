@@ -26,7 +26,7 @@ unsafe_actions:
 model:
   architecture: "video_action_detector"  # Options: video_action_detector, slowfast, i3d
   backbone: "resnet50"  # Base CNN backbone
-  num_classes: 9  # Number of unsafe action categories + 1 safe class
+  num_classes: 10  # Number of unsafe action categories + 1 safe class (0-9)
   num_frames: 16  # Number of frames to process at once
   frame_interval: 2  # Sample every N frames
   input_size: [224, 224]
@@ -35,16 +35,16 @@ model:
 
 # Training Configuration
 training:
-  batch_size: 8
-  num_epochs: 50
+  batch_size: 2
+  num_epochs: 5
   learning_rate: 0.001
   weight_decay: 0.0001
   optimizer: "adam"  # Options: adam, sgd, adamw
   scheduler: "cosine"  # Options: cosine, step, plateau
   warmup_epochs: 5
   gradient_clip: 1.0
-  num_workers: 4
-  device: "cuda"  # Options: cuda, cpu, mps
+  num_workers: 0
+  device: "cpu"  # Options: cuda, cpu, mps
   
 # Data Augmentation
 augmentation:

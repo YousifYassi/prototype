@@ -29,6 +29,10 @@ class UnsafeActionDetector:
         self.device = torch.device(config['training']['device'] 
                                    if torch.cuda.is_available() else 'cpu')
         
+        # Logger (initialize first)
+        self.logger = setup_logger(config['logging']['save_dir'])
+        self.logger.info(f"Detector initialized on device: {self.device}")
+        
         # Load model
         self.model = self.load_model(model_path)
         self.model.eval()
@@ -59,10 +63,6 @@ class UnsafeActionDetector:
         # Alert system
         self.alert_config = config['alerts']
         self.setup_alerts()
-        
-        # Logger
-        self.logger = setup_logger(config['logging']['save_dir'])
-        self.logger.info(f"Detector initialized on device: {self.device}")
     
     def load_model(self, model_path):
         """Load trained model from checkpoint"""

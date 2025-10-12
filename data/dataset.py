@@ -169,7 +169,7 @@ class BDD100KActionDataset(VideoActionDataset):
         # If annotations exist, parse them
         if self.annotations:
             for item in self.annotations.get(self.split, []):
-                video_path = self.root_dir / 'videos' / item.get('video_name', '')
+                video_path = self.root_dir / 'videos' / self.split / item.get('video_name', '')
                 if video_path.exists():
                     video_paths.append(str(video_path))
                     labels.append(item.get('label', 0))
