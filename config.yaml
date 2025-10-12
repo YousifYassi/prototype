@@ -25,26 +25,37 @@ unsafe_actions:
 # Model Configuration
 model:
   architecture: "video_action_detector"  # Options: video_action_detector, slowfast, i3d
-  backbone: "resnet50"  # Base CNN backbone
+  backbone: "resnet50"  # Base CNN backbone (use resnet18 if GPU memory is limited)
   num_classes: 10  # Number of unsafe action categories + 1 safe class (0-9)
-  num_frames: 16  # Number of frames to process at once
+  num_frames: 16  # Number of frames to process at once (reduce to 8 if GPU memory issues)
   frame_interval: 2  # Sample every N frames
-  input_size: [224, 224]
+  input_size: [224, 224]  # Frame resolution
   dropout: 0.5
   pretrained: true
 
 # Training Configuration
+# RECOMMENDED: Install PyTorch with CUDA to use your RTX 4060 GPU (10-30x faster!)
+# Run: pip uninstall torch torchvision && pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 training:
-  batch_size: 2
-  num_epochs: 5
+  # GPU Settings (RTX 4060 with 4GB VRAM) - Uncomment when CUDA is installed
+  batch_size: 4          # Increase to 4-6 for GPU (currently 2 for CPU)
+  num_epochs: 30         # Increase to 30-50 for GPU (currently 5 for quick CPU test)
+  num_workers: 4         # Increase to 4-6 for GPU (currently 0 for CPU)
+  device: "cuda"         # Use "cuda" for GPU, "cpu" for CPU-only
+  
+  # CPU Settings (if not using GPU) - Use these values:
+  # batch_size: 2
+  # num_epochs: 5-10
+  # num_workers: 0
+  # device: "cpu"
+  
+  # Optimizer settings
   learning_rate: 0.001
   weight_decay: 0.0001
   optimizer: "adam"  # Options: adam, sgd, adamw
   scheduler: "cosine"  # Options: cosine, step, plateau
   warmup_epochs: 5
   gradient_clip: 1.0
-  num_workers: 0
-  device: "cpu"  # Options: cuda, cpu, mps
   
 # Data Augmentation
 augmentation:
