@@ -1,0 +1,23 @@
+# Backend API Requirements
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+pydantic[email]==2.5.0
+sqlalchemy==2.0.23
+pyjwt==2.8.0
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+httpx==0.25.1
+
+# Notification services
+aiosmtplib==3.0.1
+sendgrid==6.11.0
+twilio==8.10.0
+
+# Already in main requirements.txt but needed here too
+pyyaml==6.0.1
+torch>=2.0.0
+torchvision>=0.15.0
+opencv-python==4.8.1.78
+numpy>=1.24.0
+
