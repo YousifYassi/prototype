@@ -63,6 +63,34 @@ python verify.py
 
 ## 📊 Data Preparation
 
+### Using CoVLA Dataset (Recommended)
+
+The CoVLA Dataset provides 80+ hours of real-world driving videos with trajectory data and annotations.
+
+1. **Setup Authentication**:
+```bash
+python setup_covla_auth.py
+```
+
+2. **Configure for CoVLA**:
+Edit `config.yaml`:
+```yaml
+dataset:
+  name: "covla"
+  hf_dataset_name: "turing-motors/CoVLA-Dataset"
+  use_mini: false  # Set to true for testing
+```
+
+3. **Test Integration**:
+```bash
+python test_covla_dataset.py
+```
+
+4. **Start Training**:
+```bash
+python train.py
+```
+
 ### Using BDD100K Dataset
 
 1. **Download BDD100K dataset** from [https://bdd-data.berkeley.edu/](https://bdd-data.berkeley.edu/)
@@ -77,7 +105,16 @@ datasets/bdd100k/
 └── annotations.json
 ```
 
-3. **Prepare annotations**:
+3. **Configure for BDD100K**:
+Edit `config.yaml`:
+```yaml
+dataset:
+  name: "bdd100k"
+  root_dir: "datasets/bdd100k"
+  annotations_file: "datasets/bdd100k/annotations.json"
+```
+
+4. **Prepare annotations**:
 ```bash
 python prepare_data.py --root_dir datasets/bdd100k --output datasets/bdd100k/annotations.json
 ```
@@ -359,8 +396,10 @@ This project is licensed under the MIT License - see LICENSE file for details.
 
 ## 🙏 Acknowledgments
 
+- CoVLA Dataset: [turing-motors/CoVLA-Dataset](https://huggingface.co/datasets/turing-motors/CoVLA-Dataset)
 - BDD100K dataset: [https://bdd-data.berkeley.edu/](https://bdd-data.berkeley.edu/)
 - PyTorch framework: [https://pytorch.org/](https://pytorch.org/)
+- Hugging Face Datasets: [https://huggingface.co/docs/datasets/](https://huggingface.co/docs/datasets/)
 
 ## 📞 Support
 

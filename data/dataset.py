@@ -10,6 +10,9 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 import albumentations as A
 from pathlib import Path
+from datasets import load_dataset
+import tempfile
+import shutil
 
 
 class VideoActionDataset(Dataset):
@@ -184,6 +187,165 @@ class BDD100KActionDataset(VideoActionDataset):
         return video_paths, labels
 
 
+class CoVLADataset(VideoActionDataset):
+    """
+    CoVLA Dataset for unsafe driving action detection
+    Loads data from Hugging Face: turing-motors/CoVLA-Dataset
+    """
+    
+    def __init__(self, dataset_name="turing-motors/CoVLA-Dataset", split='train', 
+                 cache_dir=None, use_mini=False, **kwargs):
+        """
+        Args:
+            dataset_name: Hugging Face dataset name
+            split: 'train', 'validation', or 'test'
+            cache_dir: Directory to cache downloaded data
+            use_mini: Whether to use the mini version for testing
+            **kwargs: Additional arguments for VideoActionDataset
+        """
+        self.dataset_name = dataset_name
+        self.split = split
+        self.cache_dir = cache_dir or os.path.join(os.getcwd(), 'data', 'covla_cache')
+        self.use_mini = use_mini
+        
+        # Use mini dataset for testing if requested
+        if use_mini:
+            self.dataset_name = "turing-motors/CoVLA-Dataset-Mini"
+        
+        # Load dataset from Hugging Face
+        self.hf_dataset = self._load_huggingface_dataset()
+        
+        # Parse video paths and labels
+        video_paths, labels = self._parse_covla_data()
+        
+        super().__init__(video_paths, labels, **kwargs)
+    
+    def _load_huggingface_dataset(self):
+        """Load dataset from Hugging Face"""
+        try:
+            # Create cache directory
+            os.makedirs(self.cache_dir, exist_ok=True)
+            
+            # Load dataset
+            dataset = load_dataset(
+                self.dataset_name,
+                cache_dir=self.cache_dir
+            )
+            
+            print(f"Loaded CoVLA dataset: {self.dataset_name}")
+            print(f"Available splits: {list(dataset.keys())}")
+            
+            return dataset
+            
+        except Exception as e:
+            print(f"Error loading CoVLA dataset: {e}")
+            print("Make sure you have accepted the license terms on Hugging Face")
+            print("and have the datasets library installed: pip install datasets")
+            raise
+    
+    def _parse_covla_data(self):
+        """Parse CoVLA dataset for video paths and action labels"""
+        video_paths = []
+        labels = []
+        
+        # Get the appropriate split
+        if self.split in self.hf_dataset:
+            split_data = self.hf_dataset[self.split]
+        else:
+            # Fallback to first available split
+            available_splits = list(self.hf_dataset.keys())
+            split_data = self.hf_dataset[available_splits[0]]
+            print(f"Split '{self.split}' not found. Using '{available_splits[0]}'")
+        
+        print(f"Processing {len(split_data)} samples from CoVLA dataset...")
+        
+        # Create temporary directory for video files
+        temp_dir = tempfile.mkdtemp(prefix='covla_videos_')
+        
+        for idx, sample in enumerate(split_data):
+            try:
+                # Extract video data
+                video_data = sample.get('video', None)
+                if video_data is None:
+                    continue
+                
+                # Save video to temporary file
+                video_filename = f"covla_video_{idx:06d}.mp4"
+                video_path = os.path.join(temp_dir, video_filename)
+                
+                # Write video bytes to file
+                with open(video_path, 'wb') as f:
+                    f.write(video_data['bytes'])
+                
+                video_paths.append(video_path)
+                
+                # Extract action label from annotations
+                label = self._extract_action_label(sample)
+                labels.append(label)
+                
+            except Exception as e:
+                print(f"Error processing sample {idx}: {e}")
+                continue
+        
+        print(f"Successfully processed {len(video_paths)} video samples")
+        
+        # Store temp directory for cleanup
+        self.temp_dir = temp_dir
+        
+        return video_paths, labels
+    
+    def _extract_action_label(self, sample):
+        """
+        Extract unsafe action label from CoVLA annotations
+        This is a simplified mapping - you may need to adjust based on actual data structure
+        """
+        # Get annotations/captions
+        annotations = sample.get('annotations', {})
+        captions = sample.get('captions', [])
+        
+        # Default to safe driving (label 0)
+        label = 0
+        
+        # Check for unsafe driving indicators in captions
+        unsafe_keywords = [
+            'aggressive', 'dangerous', 'unsafe', 'reckless', 'speeding',
+            'tailgating', 'cutting off', 'running red', 'wrong way',
+            'near miss', 'collision', 'accident', 'violation'
+        ]
+        
+        # Combine all text for analysis
+        all_text = ""
+        if isinstance(captions, list):
+            all_text += " ".join(captions)
+        elif isinstance(captions, str):
+            all_text += captions
+        
+        if isinstance(annotations, dict):
+            all_text += " ".join(str(v) for v in annotations.values())
+        elif isinstance(annotations, str):
+            all_text += annotations
+        
+        # Check for unsafe driving patterns
+        all_text_lower = all_text.lower()
+        for keyword in unsafe_keywords:
+            if keyword in all_text_lower:
+                label = 1  # Unsafe driving
+                break
+        
+        # You can extend this to map to specific unsafe action categories
+        # based on the actual CoVLA annotation structure
+        
+        return label
+    
+    def __del__(self):
+        """Cleanup temporary files"""
+        if hasattr(self, 'temp_dir') and os.path.exists(self.temp_dir):
+            try:
+                shutil.rmtree(self.temp_dir)
+            except:
+                pass
+
+
 class StreamVideoBuffer:
     """
     Buffer for processing real-time video streams
@@ -243,26 +405,52 @@ def create_dataloaders(config):
     model_config = config['model']
     training_config = config['training']
     
-    # Create datasets
-    train_dataset = BDD100KActionDataset(
-        root_dir=dataset_config['root_dir'],
-        annotations_file=dataset_config['annotations_file'],
-        split='train',
-        num_frames=model_config['num_frames'],
-        frame_interval=model_config['frame_interval'],
-        input_size=tuple(model_config['input_size']),
-        augment=True
-    )
+    dataset_name = dataset_config.get('name', 'bdd100k').lower()
     
-    val_dataset = BDD100KActionDataset(
-        root_dir=dataset_config['root_dir'],
-        annotations_file=dataset_config['annotations_file'],
-        split='val',
-        num_frames=model_config['num_frames'],
-        frame_interval=model_config['frame_interval'],
-        input_size=tuple(model_config['input_size']),
-        augment=False
-    )
+    # Common dataset parameters
+    dataset_params = {
+        'num_frames': model_config['num_frames'],
+        'frame_interval': model_config['frame_interval'],
+        'input_size': tuple(model_config['input_size']),
+    }
+    
+    if dataset_name == 'covla':
+        # Create CoVLA datasets
+        train_dataset = CoVLADataset(
+            dataset_name=dataset_config.get('hf_dataset_name', 'turing-motors/CoVLA-Dataset'),
+            split='train',
+            cache_dir=dataset_config.get('cache_dir'),
+            use_mini=dataset_config.get('use_mini', False),
+            augment=True,
+            **dataset_params
+        )
+        
+        val_dataset = CoVLADataset(
+            dataset_name=dataset_config.get('hf_dataset_name', 'turing-motors/CoVLA-Dataset'),
+            split='validation',
+            cache_dir=dataset_config.get('cache_dir'),
+            use_mini=dataset_config.get('use_mini', False),
+            augment=False,
+            **dataset_params
+        )
+        
+    else:
+        # Default to BDD100K
+        train_dataset = BDD100KActionDataset(
+            root_dir=dataset_config['root_dir'],
+            annotations_file=dataset_config['annotations_file'],
+            split='train',
+            augment=True,
+            **dataset_params
+        )
+        
+        val_dataset = BDD100KActionDataset(
+            root_dir=dataset_config['root_dir'],
+            annotations_file=dataset_config['annotations_file'],
+            split='val',
+            augment=False,
+            **dataset_params
+        )
     
     # Create dataloaders
     train_loader = DataLoader(

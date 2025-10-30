@@ -2,13 +2,20 @@
 
 # Dataset Configuration
 dataset:
-  name: "bdd100k"
+  name: "covla"  # Options: "bdd100k", "covla"
+  
+  # BDD100K Configuration (when name: "bdd100k")
   root_dir: "datasets/bdd100k"
   video_dir: "datasets/bdd100k/videos"
   annotations_file: "datasets/bdd100k/annotations.json"
   train_split: 0.8
   val_split: 0.1
   test_split: 0.1
+  
+  # CoVLA Configuration (when name: "covla")
+  hf_dataset_name: "turing-motors/CoVLA-Dataset"  # Hugging Face dataset name
+  cache_dir: "data/covla_cache"  # Local cache directory
+  use_mini: false  # Set to true for testing with CoVLA-Dataset-Mini
   
 # Unsafe Action Categories (customize based on your use case)
 unsafe_actions:
