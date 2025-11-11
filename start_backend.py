@@ -13,19 +13,19 @@ if __name__ == "__main__":
     from backend.app import app
     
     print("=" * 60)
-    print("🚀 Starting Workplace Safety Monitoring Backend API")
+    print("Starting Workplace Safety Monitoring Backend API")
     print("=" * 60)
     print()
-    print("📍 Server will be available at: http://localhost:8000")
-    print("📖 API Documentation: http://localhost:8000/docs")
-    print("📖 Alternative docs: http://localhost:8000/redoc")
+    print("Server will be available at: http://localhost:8000")
+    print("API Documentation: http://localhost:8000/docs")
+    print("Alternative docs: http://localhost:8000/redoc")
     print()
     print("Press CTRL+C to stop the server")
     print("=" * 60)
     print()
     
     uvicorn.run(
-        app,
+        "backend.app:app",
         host="0.0.0.0",
         port=8000,
         reload=True,
