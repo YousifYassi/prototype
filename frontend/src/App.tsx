@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage'
 import Dashboard from './pages/Dashboard'
 import ConfigurationPage from './pages/ConfigurationPage'
 import VideoUploadPage from './pages/VideoUploadPage'
+import LiveStreamPage from './pages/LiveStreamPage'
 import Layout from './components/Layout'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -39,6 +40,7 @@ function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="upload" element={<VideoUploadPage />} />
+            <Route path="streams" element={<LiveStreamPage />} />
             <Route path="config" element={<ConfigurationPage />} />
           </Route>
         </Routes>

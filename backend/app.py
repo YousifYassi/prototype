@@ -26,6 +26,7 @@ from models.action_detector import create_model
 from inference import UnsafeActionDetector
 from backend.database import get_db, User, VideoProcessing, AlertConfig
 from backend.notifications import send_email_alert, send_sms_alert
+from backend.stream_manager import StreamManager, StreamConfig, validate_stream_url
 
 # Initialize FastAPI app
 app = FastAPI(title="Workplace Safety Monitoring API", version="1.0.0")
@@ -54,6 +55,7 @@ with open("config.yaml", "r") as f:
 
 # Initialize detector (singleton)
 detector = None
+stream_manager = None
 
 def get_detector():
     global detector
@@ -63,6 +65,20 @@ def get_detector():
             raise FileNotFoundError(f"Model not found: {model_path}")
         detector = UnsafeActionDetector(config, model_path)
     return detector
+
+def get_stream_manager():
+    global stream_manager
+    if stream_manager is None:
+        detector = get_detector()
+        stream_manager = StreamManager(detector)
+        
+        # Add alert handler for database logging
+        async def alert_handler(stream_id: str, action: str, confidence: float):
+            logger.info(f"Alert from stream {stream_id}: {action} ({confidence:.2%})")
+            # Additional handling can be added here
+        
+        stream_manager.add_alert_handler(alert_handler)
+    return stream_manager
 
 
 # ===== Pydantic Models =====
@@ -106,6 +122,26 @@ class AlertNotification(BaseModel):
     confidence: float
     video_id: str
     clip_path: Optional[str] = None
+
+
+class StreamCreate(BaseModel):
+    name: str
+    source_url: str
+    source_type: str  # 'rtsp', 'rtmp', 'http', 'webcam'
+    fps: int = 30
+    
+    @validator('source_type')
+    def validate_source_type(cls, v):
+        allowed_types = ['rtsp', 'rtmp', 'http', 'webcam']
+        if v not in allowed_types:
+            raise ValueError(f'source_type must be one of {allowed_types}')
+        return v
+    
+    @validator('fps')
+    def validate_fps(cls, v):
+        if v < 1 or v > 60:
+            raise ValueError('fps must be between 1 and 60')
+        return v
 
 
 # ===== Authentication =====
@@ -573,6 +609,169 @@ async def list_videos(
             VideoProcessing.user_id == current_user.id
         ).count()
     }
+
+
+# ===== Live Streaming Endpoints =====
+
+@app.post("/streams")
+async def create_stream(
+    stream_data: StreamCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Create and start a new live video stream
+    Supports RTSP, RTMP, HTTP streams, and webcams
+    """
+    # Validate stream URL
+    if not validate_stream_url(stream_data.source_url, stream_data.source_type):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid {stream_data.source_type} URL format"
+        )
+    
+    # Generate unique stream ID
+    import uuid
+    stream_id = str(uuid.uuid4())
+    
+    # Create stream configuration
+    stream_config = StreamConfig(
+        stream_id=stream_id,
+        name=stream_data.name,
+        source_url=stream_data.source_url,
+        source_type=stream_data.source_type,
+        status='inactive',
+        fps=stream_data.fps,
+        created_at=datetime.now().isoformat()
+    )
+    
+    # Add stream to manager
+    manager = get_stream_manager()
+    success = manager.add_stream(stream_config)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to start stream"
+        )
+    
+    return {
+        "stream_id": stream_id,
+        "name": stream_data.name,
+        "status": "active",
+        "message": "Stream started successfully"
+    }
+
+
+@app.get("/streams")
+async def list_streams(
+    current_user: User = Depends(get_current_user)
+):
+    """List all active streams"""
+    manager = get_stream_manager()
+    streams = manager.list_streams()
+    
+    return {
+        "streams": streams,
+        "total": len(streams)
+    }
+
+
+@app.get("/streams/{stream_id}")
+async def get_stream_status(
+    stream_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get status and details of a specific stream"""
+    manager = get_stream_manager()
+    stream = manager.get_stream(stream_id)
+    
+    if not stream:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stream not found"
+        )
+    
+    return stream.get_status()
+
+
+@app.delete("/streams/{stream_id}")
+async def delete_stream(
+    stream_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Stop and remove a stream"""
+    manager = get_stream_manager()
+    success = manager.remove_stream(stream_id)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stream not found"
+        )
+    
+    return {
+        "message": "Stream stopped and removed successfully"
+    }
+
+
+@app.get("/streams/{stream_id}/frame")
+async def get_stream_frame(
+    stream_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get current frame from stream as base64 encoded JPEG
+    Used for polling-based video display in frontend
+    """
+    manager = get_stream_manager()
+    frame_base64 = manager.get_stream_frame(stream_id, format='base64')
+    
+    if frame_base64 is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stream not found or no frame available"
+        )
+    
+    return {
+        "stream_id": stream_id,
+        "frame": frame_base64,
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+from fastapi.responses import StreamingResponse
+
+@app.get("/streams/{stream_id}/video")
+async def stream_video(
+    stream_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Stream video as MJPEG (Motion JPEG) for continuous playback
+    This provides a continuous video stream that can be displayed in an <img> tag
+    """
+    manager = get_stream_manager()
+    stream = manager.get_stream(stream_id)
+    
+    if not stream:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stream not found"
+        )
+    
+    def generate():
+        """Generate MJPEG stream"""
+        while stream.is_running:
+            frame_jpeg = stream.get_frame_jpeg()
+            if frame_jpeg is not None:
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame_jpeg + b'\r\n')
+            time.sleep(1.0 / stream.config.fps)
+    
+    return StreamingResponse(
+        generate(),
+        media_type='multipart/x-mixed-replace; boundary=frame'
+    )
 
 
 if __name__ == "__main__":

@@ -76,3 +76,4 @@ bdd100k_labels_images_det_coco.json
 frontend/node_modules/
 backend/.env
 frontend/.env
+backend/workplace_safety.db
