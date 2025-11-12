@@ -9,7 +9,7 @@ import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
-from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, status, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr, validator
@@ -389,110 +389,115 @@ async def process_video_task(
     video_id: str,
     video_path: str,
     user_id: str,
-    db_session
 ):
-    """Background task to process video and send alerts"""
+    """Process video in a worker thread so the event loop stays responsive."""
     from backend.database import SessionLocal
-    db = SessionLocal()
-    
-    try:
-        # Update status to processing
-        video_record = db.query(VideoProcessing).filter(
-            VideoProcessing.id == video_id
-        ).first()
-        video_record.status = "processing"
-        db.commit()
-        
-        # Get detector
-        detector = get_detector()
-        
-        # Get user's alert configuration
-        user = db.query(User).filter(User.id == user_id).first()
-        alert_config = db.query(AlertConfig).filter(
-            AlertConfig.user_id == user_id
-        ).first()
-        
-        # Process video with custom alert handler
-        import cv2
-        cap = cv2.VideoCapture(video_path)
-        
-        unsafe_actions_detected = []
-        
+
+    def _send_email(alert_config, action, confidence, filename):
         try:
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                
-                # Process frame
-                result = detector.process_frame(frame)
-                
-                # Check if unsafe action detected and alert should be sent
-                if result.get('alert') and result.get('is_unsafe'):
-                    action = result['action']
-                    confidence = result['confidence']
-                    
-                    # Send notifications
-                    if alert_config:
-                        if alert_config.enable_email and alert_config.email:
-                            await send_email_alert(
-                                alert_config.email,
-                                action,
-                                confidence,
-                                video_record.filename
-                            )
-                        
-                        if alert_config.enable_sms and alert_config.phone:
-                            await send_sms_alert(
-                                alert_config.phone,
-                                action,
-                                confidence,
-                                video_record.filename
-                            )
-                    
-                    unsafe_actions_detected.append({
-                        "action": action,
-                        "confidence": float(confidence),
-                        "timestamp": datetime.now().isoformat()
-                    })
-        
+            asyncio.run(send_email_alert(
+                alert_config.email,
+                action,
+                confidence,
+                filename
+            ))
+        except Exception as notify_err:
+            print(f"Failed to send email alert: {notify_err}")
+
+    def _send_sms(alert_config, action, confidence, filename):
+        try:
+            asyncio.run(send_sms_alert(
+                alert_config.phone,
+                action,
+                confidence,
+                filename
+            ))
+        except Exception as notify_err:
+            print(f"Failed to send SMS alert: {notify_err}")
+
+    def worker():
+        db = SessionLocal()
+        try:
+            video_record = db.query(VideoProcessing).filter(
+                VideoProcessing.id == video_id
+            ).first()
+            if not video_record:
+                return
+
+            video_record.status = "processing"
+            db.commit()
+
+            detector = get_detector()
+
+            alert_config = db.query(AlertConfig).filter(
+                AlertConfig.user_id == user_id
+            ).first()
+
+            import cv2
+            cap = cv2.VideoCapture(video_path)
+
+            unsafe_actions_detected = []
+
+            try:
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+
+                    result = detector.process_frame(frame)
+
+                    if result.get('alert') and result.get('is_unsafe'):
+                        action = result['action']
+                        confidence = result['confidence']
+
+                        if alert_config:
+                            if alert_config.enable_email and alert_config.email:
+                                _send_email(alert_config, action, confidence, video_record.filename)
+
+                            if alert_config.enable_sms and alert_config.phone:
+                                _send_sms(alert_config, action, confidence, video_record.filename)
+
+                        unsafe_actions_detected.append({
+                            "action": action,
+                            "confidence": float(confidence),
+                            "timestamp": datetime.now().isoformat()
+                        })
+            finally:
+                cap.release()
+
+            if unsafe_actions_detected:
+                video_record.status = "unsafe_detected"
+                video_record.result = json.dumps({
+                    "unsafe_actions": unsafe_actions_detected,
+                    "total_detections": len(unsafe_actions_detected)
+                })
+            else:
+                video_record.status = "safe"
+                video_record.result = json.dumps({
+                    "unsafe_actions": [],
+                    "total_detections": 0
+                })
+
+            video_record.processed_at = datetime.utcnow()
+            db.commit()
+
+        except Exception as e:
+            video_record = db.query(VideoProcessing).filter(
+                VideoProcessing.id == video_id
+            ).first()
+            if video_record:
+                video_record.status = "error"
+                video_record.result = json.dumps({"error": str(e)})
+                db.commit()
+            print(f"Error processing video: {e}")
         finally:
-            cap.release()
-        
-        # Update video record
-        if unsafe_actions_detected:
-            video_record.status = "unsafe_detected"
-            video_record.result = json.dumps({
-                "unsafe_actions": unsafe_actions_detected,
-                "total_detections": len(unsafe_actions_detected)
-            })
-        else:
-            video_record.status = "safe"
-            video_record.result = json.dumps({
-                "unsafe_actions": [],
-                "total_detections": 0
-            })
-        
-        video_record.processed_at = datetime.utcnow()
-        db.commit()
-        
-    except Exception as e:
-        # Update status to error
-        video_record = db.query(VideoProcessing).filter(
-            VideoProcessing.id == video_id
-        ).first()
-        video_record.status = "error"
-        video_record.result = json.dumps({"error": str(e)})
-        db.commit()
-        print(f"Error processing video: {e}")
-    
-    finally:
-        db.close()
+            db.close()
+
+    await asyncio.to_thread(worker)
 
 
 @app.post("/videos/upload", response_model=VideoUploadResponse)
 async def upload_video(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -519,10 +524,14 @@ async def upload_video(
     video_filename = f"{video_id}{file_extension}"
     video_path = upload_dir / video_filename
     
-    # Save uploaded file
+    # Save uploaded file in chunks to avoid blocking the event loop
     with open(video_path, "wb") as f:
-        content = await file.read()
-        f.write(content)
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            f.write(chunk)
+    await file.close()
     
     # Create video processing record
     video_record = VideoProcessing(
@@ -535,13 +544,13 @@ async def upload_video(
     db.add(video_record)
     db.commit()
     
-    # Add background task to process video
-    background_tasks.add_task(
-        process_video_task,
-        video_id,
-        str(video_path),
-        current_user.id,
-        db
+    # Kick off processing without blocking the response cycle
+    asyncio.create_task(
+        process_video_task(
+            video_id,
+            str(video_path),
+            current_user.id,
+        )
     )
     
     return VideoUploadResponse(

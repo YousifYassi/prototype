@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { videoApi } from '../lib/api'
@@ -7,6 +7,7 @@ import { Upload, FileVideo, X, CheckCircle, AlertCircle } from 'lucide-react'
 
 export default function VideoUploadPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [dragActive, setDragActive] = useState(false)
 
@@ -15,12 +16,17 @@ export default function VideoUploadPage() {
     onSuccess: (data) => {
       toast.success('Video uploaded successfully! Processing in background...')
       setSelectedFile(null)
-      setTimeout(() => navigate('/'), 2000)
+      queryClient.invalidateQueries({ queryKey: ['videos'] })
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.detail || 'Upload failed. Please try again.')
     },
   })
+
+  const resetState = () => {
+    setSelectedFile(null)
+    uploadMutation.reset()
+  }
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault()
@@ -41,6 +47,9 @@ export default function VideoUploadPage() {
       const file = e.dataTransfer.files[0]
       if (file.type.startsWith('video/')) {
         setSelectedFile(file)
+        if (uploadMutation.isSuccess || uploadMutation.isError) {
+          uploadMutation.reset()
+        }
       } else {
         toast.error('Please select a video file')
       }
@@ -52,6 +61,9 @@ export default function VideoUploadPage() {
       const file = e.target.files[0]
       if (file.type.startsWith('video/')) {
         setSelectedFile(file)
+        if (uploadMutation.isSuccess || uploadMutation.isError) {
+          uploadMutation.reset()
+        }
       } else {
         toast.error('Please select a video file')
       }
@@ -139,7 +151,7 @@ export default function VideoUploadPage() {
                 </div>
               </div>
               <button
-                onClick={() => setSelectedFile(null)}
+                onClick={resetState}
                 className="text-gray-400 hover:text-gray-600"
                 disabled={uploadMutation.isPending}
               >
@@ -156,11 +168,32 @@ export default function VideoUploadPage() {
             )}
 
             {uploadMutation.isSuccess && (
-              <div className="flex items-center space-x-3 p-4 bg-green-50 border border-green-200 rounded-lg">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <span className="text-sm text-green-900">
-                  Upload successful! Redirecting to dashboard...
-                </span>
+              <div className="flex flex-col space-y-3 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                  <span className="text-sm text-green-900">
+                    Upload successful! Processing has started in the background.
+                  </span>
+                </div>
+                <p className="text-xs text-green-800">
+                  You can stay here to upload another video or return to the dashboard to monitor progress.
+                </p>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-2 space-y-2 sm:space-y-0">
+                  <button
+                    type="button"
+                    onClick={resetState}
+                    className="btn-secondary text-sm"
+                  >
+                    Upload Another Video
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/')}
+                    className="btn-primary text-sm"
+                  >
+                    Go to Dashboard
+                  </button>
+                </div>
               </div>
             )}
 
@@ -183,7 +216,7 @@ export default function VideoUploadPage() {
                 {uploadMutation.isPending ? 'Uploading...' : 'Upload & Analyze'}
               </button>
               <button
-                onClick={() => setSelectedFile(null)}
+                onClick={resetState}
                 disabled={uploadMutation.isPending}
                 className="btn-secondary"
               >

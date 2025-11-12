@@ -4,9 +4,17 @@ import { AlertTriangle, CheckCircle, Clock, FileVideo, TrendingUp } from 'lucide
 import { Link } from 'react-router-dom'
 
 export default function Dashboard() {
-  const { data: videosData, isLoading } = useQuery({
+  const {
+    data: videosData,
+    isLoading,
+    isFetching,
+  } = useQuery({
     queryKey: ['videos'],
     queryFn: () => videoApi.list(10, 0),
+    refetchInterval: 5000,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+    keepPreviousData: true,
   })
 
   const videos = videosData?.videos || []
@@ -47,7 +55,7 @@ export default function Dashboard() {
     }
   }
 
-  if (isLoading) {
+  if (isLoading && !videosData) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
@@ -66,6 +74,9 @@ export default function Dashboard() {
         <p className="mt-2 text-gray-600">
           Monitor your workplace safety video analysis
         </p>
+        {isFetching && (
+          <p className="mt-1 text-sm text-blue-600">Refreshing latest video statuses…</p>
+        )}
       </div>
 
       {/* Stats */}
