@@ -230,9 +230,12 @@ export default function Dashboard() {
                       {new Date(video.uploaded_at).toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button className="text-primary-600 hover:text-primary-900">
+                      <Link 
+                        to={`/video/${video.video_id}`}
+                        className="text-primary-600 hover:text-primary-900"
+                      >
                         View Details
-                      </button>
+                      </Link>
                     </td>
                   </tr>
                 ))}

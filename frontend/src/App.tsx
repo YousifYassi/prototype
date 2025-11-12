@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage'
 import Dashboard from './pages/Dashboard'
 import ConfigurationPage from './pages/ConfigurationPage'
 import VideoUploadPage from './pages/VideoUploadPage'
+import VideoDetailsPage from './pages/VideoDetailsPage'
 import LiveStreamPage from './pages/LiveStreamPage'
 import Layout from './components/Layout'
 
@@ -40,6 +41,7 @@ function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="upload" element={<VideoUploadPage />} />
+            <Route path="video/:videoId" element={<VideoDetailsPage />} />
             <Route path="streams" element={<LiveStreamPage />} />
             <Route path="config" element={<ConfigurationPage />} />
           </Route>

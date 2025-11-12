@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { videoApi } from '../lib/api'
 import { Upload, FileVideo, X, CheckCircle, AlertCircle } from 'lucide-react'
@@ -222,22 +222,27 @@ export default function VideoUploadPage() {
         </div>
       </div>
 
-      {/* Future Feature Notice */}
+      {/* Live Stream Feature */}
       <div className="card bg-purple-50 border border-purple-200">
         <div className="flex items-start space-x-3">
           <div className="flex-shrink-0">
             <div className="flex items-center justify-center h-10 w-10 rounded-full bg-purple-100 text-purple-600">
-              🚀
+              📹
             </div>
           </div>
-          <div>
+          <div className="flex-1">
             <h3 className="font-semibold text-purple-900 mb-1">
-              Live Stream Support Coming Soon
+              Live Stream Monitoring Available!
             </h3>
-            <p className="text-sm text-purple-800">
-              We're working on real-time video stream processing from cameras and RTSP sources.
-              Stay tuned for this exciting feature!
+            <p className="text-sm text-purple-800 mb-3">
+              Monitor live camera feeds with real-time AI detection. Connect IP cameras, RTSP streams, or webcams for continuous workplace safety monitoring.
             </p>
+            <Link 
+              to="/streams"
+              className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+            >
+              Go to Live Streams
+            </Link>
           </div>
         </div>
       </div>

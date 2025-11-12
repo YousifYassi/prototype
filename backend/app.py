@@ -578,8 +578,109 @@ async def get_video_status(
         "status": video.status,
         "uploaded_at": video.uploaded_at.isoformat(),
         "processed_at": video.processed_at.isoformat() if video.processed_at else None,
-        "result": result_data
+        "result": result_data,
+        "filepath": video.filepath
     }
+
+
+from fastapi.responses import FileResponse
+
+async def get_user_from_token(token: str, db: Session) -> User:
+    """Verify token and return user"""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials"
+            )
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials"
+        )
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found"
+        )
+    return user
+
+
+@app.get("/videos/{video_id}/download")
+async def download_video(
+    video_id: str,
+    token: str,
+    db: Session = Depends(get_db)
+):
+    """Download the original video file"""
+    # Authenticate using token from query param
+    user = await get_user_from_token(token, db)
+    
+    video = db.query(VideoProcessing).filter(
+        VideoProcessing.id == video_id,
+        VideoProcessing.user_id == user.id
+    ).first()
+    
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    video_path = Path(video.filepath)
+    if not video_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video file not found on server"
+        )
+    
+    return FileResponse(
+        path=str(video_path),
+        media_type='video/mp4',
+        filename=video.filename,
+        headers={
+            "Content-Disposition": f"attachment; filename={video.filename}"
+        }
+    )
+
+
+@app.get("/videos/{video_id}/stream")
+async def stream_video(
+    video_id: str,
+    token: str,
+    db: Session = Depends(get_db)
+):
+    """Stream video for playback in browser"""
+    # Authenticate using token from query param
+    user = await get_user_from_token(token, db)
+    
+    video = db.query(VideoProcessing).filter(
+        VideoProcessing.id == video_id,
+        VideoProcessing.user_id == user.id
+    ).first()
+    
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    video_path = Path(video.filepath)
+    if not video_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video file not found on server"
+        )
+    
+    return FileResponse(
+        path=str(video_path),
+        media_type='video/mp4',
+        filename=video.filename
+    )
 
 
 @app.get("/videos")
