@@ -2,7 +2,7 @@
 
 # Dataset Configuration
 dataset:
-  name: "covla"  # Options: "bdd100k", "covla"
+  name: "folders"  # Options: "bdd100k", "covla", "folders" (use only additional_folders)
   
   # BDD100K Configuration (when name: "bdd100k")
   root_dir: "datasets/bdd100k"
@@ -16,6 +16,16 @@ dataset:
   hf_dataset_name: "turing-motors/CoVLA-Dataset"  # Hugging Face dataset name
   cache_dir: "data/covla_cache"  # Local cache directory
   use_mini: false  # Set to true for testing with CoVLA-Dataset-Mini
+  
+  # Additional folders to include in training
+  # Videos from these folders will be combined with the main dataset
+  additional_folders:
+    - path: "datasets/CharadesEgo_v1/videos"
+      default_label: 0  # Label for all videos (0 = safe, 1+ = unsafe)
+      recursive: true   # Search subdirectories recursively
+    - path: "datasets/missing_files_v1-2_test/videos"
+      default_label: 0
+      recursive: true
   
 # Unsafe Action Categories (customize based on your use case)
 unsafe_actions:

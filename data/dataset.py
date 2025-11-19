@@ -6,7 +6,7 @@ import json
 import cv2
 import torch
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, ConcatDataset, random_split
 from torchvision import transforms
 import albumentations as A
 from pathlib import Path
@@ -60,36 +60,52 @@ class VideoActionDataset(Dataset):
         return len(self.video_paths)
     
     def load_video(self, video_path):
-        """Load video and extract frames"""
+        """Load video and extract frames with error handling"""
         frames = []
         
-        if os.path.isfile(video_path):
-            # Load from video file
-            cap = cv2.VideoCapture(video_path)
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        try:
+            if os.path.isfile(video_path):
+                # Load from video file
+                cap = cv2.VideoCapture(video_path)
+                
+                if not cap.isOpened():
+                    raise IOError(f"Cannot open video file: {video_path}")
+                
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                
+                # Check if video has frames
+                if total_frames <= 0:
+                    cap.release()
+                    raise ValueError(f"Video has no frames: {video_path}")
+                
+                # Calculate indices to sample
+                indices = self._get_frame_indices(total_frames)
+                
+                for idx in indices:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+                    ret, frame = cap.read()
+                    if ret and frame is not None:
+                        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        frames.append(frame)
+                
+                cap.release()
+            else:
+                # Load from image sequence directory
+                frame_files = sorted([f for f in os.listdir(video_path) 
+                                    if f.endswith(('.jpg', '.png'))])
+                indices = self._get_frame_indices(len(frame_files))
+                
+                for idx in indices:
+                    frame_path = os.path.join(video_path, frame_files[idx])
+                    frame = cv2.imread(frame_path)
+                    if frame is not None:
+                        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        frames.append(frame)
             
-            # Calculate indices to sample
-            indices = self._get_frame_indices(total_frames)
-            
-            for idx in indices:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-                ret, frame = cap.read()
-                if ret:
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    frames.append(frame)
-            
-            cap.release()
-        else:
-            # Load from image sequence directory
-            frame_files = sorted([f for f in os.listdir(video_path) 
-                                if f.endswith(('.jpg', '.png'))])
-            indices = self._get_frame_indices(len(frame_files))
-            
-            for idx in indices:
-                frame_path = os.path.join(video_path, frame_files[idx])
-                frame = cv2.imread(frame_path)
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frames.append(frame)
+        except Exception as e:
+            # Log the error but don't crash - return default frames
+            print(f"Warning: Error loading video {video_path}: {e}")
+            frames = []
         
         # Pad if not enough frames
         while len(frames) < self.num_frames:
@@ -116,24 +132,114 @@ class VideoActionDataset(Dataset):
         video_path = self.video_paths[idx]
         label = self.labels[idx]
         
-        # Load frames
-        frames = self.load_video(video_path)
-        
-        # Apply augmentation to each frame
-        processed_frames = []
-        for frame in frames:
-            if self.augment and hasattr(self, 'aug_transform'):
-                augmented = self.aug_transform(image=frame)
-                frame = augmented['image']
+        try:
+            # Load frames
+            frames = self.load_video(video_path)
             
-            # Apply normalization
-            frame_tensor = self.transform(frame)
-            processed_frames.append(frame_tensor)
+            # Apply augmentation to each frame
+            processed_frames = []
+            for frame in frames:
+                if self.augment and hasattr(self, 'aug_transform'):
+                    try:
+                        augmented = self.aug_transform(image=frame)
+                        frame = augmented['image']
+                    except Exception:
+                        # Skip augmentation if it fails
+                        pass
+                
+                # Apply normalization
+                frame_tensor = self.transform(frame)
+                processed_frames.append(frame_tensor)
+            
+            # Stack frames: (T, C, H, W)
+            video_tensor = torch.stack(processed_frames)
+            
+            return video_tensor, torch.tensor(label, dtype=torch.long)
+            
+        except Exception as e:
+            # If loading fails completely, return a default tensor
+            print(f"Critical error loading video {video_path}: {e}")
+            # Return zero tensor with correct shape
+            default_tensor = torch.zeros((self.num_frames, 3, *self.input_size))
+            return default_tensor, torch.tensor(label, dtype=torch.long)
+
+
+class FolderVideoDataset(VideoActionDataset):
+    """
+    Generic dataset for loading videos from a folder structure
+    Scans a folder (and optionally subfolders) for video files
+    """
+    
+    def __init__(self, folder_path, default_label=0, recursive=True, **kwargs):
+        """
+        Args:
+            folder_path: Path to folder containing videos
+            default_label: Default label for videos (default: 0 for safe)
+            recursive: Whether to search subfolders recursively
+            **kwargs: Additional arguments for VideoActionDataset
+        """
+        self.folder_path = Path(folder_path)
+        self.default_label = default_label
         
-        # Stack frames: (T, C, H, W)
-        video_tensor = torch.stack(processed_frames)
+        # Parse video paths and labels
+        video_paths, labels = self._scan_folder(recursive)
         
-        return video_tensor, torch.tensor(label, dtype=torch.long)
+        super().__init__(video_paths, labels, **kwargs)
+    
+    def _scan_folder(self, recursive=True):
+        """Scan folder for video files and validate them"""
+        video_paths = []
+        labels = []
+        
+        # Video file extensions to look for
+        video_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.webm']
+        
+        if not self.folder_path.exists():
+            print(f"Warning: Folder {self.folder_path} does not exist.")
+            return video_paths, labels
+        
+        print(f"Scanning for videos in {self.folder_path}...")
+        
+        # Collect all video files first
+        candidate_videos = []
+        if recursive:
+            # Search recursively in all subdirectories
+            for ext in video_extensions:
+                for video_file in self.folder_path.rglob(f'*{ext}'):
+                    if video_file.is_file():
+                        candidate_videos.append(video_file)
+        else:
+            # Search only in the specified folder
+            for ext in video_extensions:
+                for video_file in self.folder_path.glob(f'*{ext}'):
+                    if video_file.is_file():
+                        candidate_videos.append(video_file)
+        
+        print(f"Found {len(candidate_videos)} video files. Validating...")
+        
+        # Validate videos (check if they can be opened)
+        valid_count = 0
+        invalid_count = 0
+        for video_file in candidate_videos:
+            # Quick validation - try to open the video
+            cap = cv2.VideoCapture(str(video_file))
+            if cap.isOpened():
+                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                if frame_count > 0:
+                    video_paths.append(str(video_file))
+                    labels.append(self.default_label)
+                    valid_count += 1
+                else:
+                    invalid_count += 1
+            else:
+                invalid_count += 1
+            cap.release()
+        
+        print(f"✓ Loaded {valid_count} valid videos from {self.folder_path}")
+        if invalid_count > 0:
+            print(f"✗ Skipped {invalid_count} corrupted/invalid videos")
+        
+        return video_paths, labels
 
 
 class BDD100KActionDataset(VideoActionDataset):
@@ -400,6 +506,7 @@ class StreamVideoBuffer:
 def create_dataloaders(config):
     """
     Create train, validation, and test dataloaders
+    Supports combining multiple datasets from different folders
     """
     dataset_config = config['dataset']
     model_config = config['model']
@@ -413,6 +520,9 @@ def create_dataloaders(config):
         'frame_interval': model_config['frame_interval'],
         'input_size': tuple(model_config['input_size']),
     }
+    
+    # Check if additional folders are specified
+    additional_folders = dataset_config.get('additional_folders', [])
     
     if dataset_name == 'covla':
         # Create CoVLA datasets
@@ -434,23 +544,112 @@ def create_dataloaders(config):
             **dataset_params
         )
         
-    else:
-        # Default to BDD100K
+    elif dataset_name == 'bdd100k':
+        # Create BDD100K datasets
         train_dataset = BDD100KActionDataset(
-            root_dir=dataset_config['root_dir'],
-            annotations_file=dataset_config['annotations_file'],
+            root_dir=dataset_config.get('root_dir', 'datasets/bdd100k'),
+            annotations_file=dataset_config.get('annotations_file', 'datasets/bdd100k/annotations.json'),
             split='train',
             augment=True,
             **dataset_params
         )
         
         val_dataset = BDD100KActionDataset(
-            root_dir=dataset_config['root_dir'],
-            annotations_file=dataset_config['annotations_file'],
+            root_dir=dataset_config.get('root_dir', 'datasets/bdd100k'),
+            annotations_file=dataset_config.get('annotations_file', 'datasets/bdd100k/annotations.json'),
             split='val',
             augment=False,
             **dataset_params
         )
+    
+    elif dataset_name == 'folders':
+        # Use only additional folders, no main dataset
+        train_dataset = None
+        val_dataset = None
+    
+    else:
+        # If no main dataset specified, create empty dataset
+        # Will be populated by additional folders if specified
+        train_dataset = None
+        val_dataset = None
+    
+    # Add videos from additional folders
+    if additional_folders:
+        train_datasets = []
+        val_datasets = []
+        
+        # Split ratio for train/val from additional folders
+        train_split_ratio = dataset_config.get('train_split', 0.8)
+        
+        for folder_config in additional_folders:
+            folder_path = folder_config.get('path')
+            if not folder_path:
+                continue
+            
+            # First, scan the folder to get all video paths
+            temp_dataset = FolderVideoDataset(
+                folder_path=folder_path,
+                default_label=folder_config.get('default_label', 0),
+                recursive=folder_config.get('recursive', True),
+                augment=False,  # Temporary, just to scan
+                **dataset_params
+            )
+            
+            if len(temp_dataset) > 0:
+                # Get all video paths and labels
+                all_video_paths = temp_dataset.video_paths
+                all_labels = temp_dataset.labels
+                
+                # Split indices
+                total_size = len(all_video_paths)
+                train_size = int(total_size * train_split_ratio)
+                indices = np.random.RandomState(42).permutation(total_size)
+                train_indices = indices[:train_size]
+                val_indices = indices[train_size:]
+                
+                # Create train dataset with augmentation
+                train_video_paths = [all_video_paths[i] for i in train_indices]
+                train_labels = [all_labels[i] for i in train_indices]
+                train_folder_dataset = VideoActionDataset(
+                    video_paths=train_video_paths,
+                    labels=train_labels,
+                    augment=True,
+                    **dataset_params
+                )
+                
+                # Create val dataset without augmentation
+                val_video_paths = [all_video_paths[i] for i in val_indices]
+                val_labels = [all_labels[i] for i in val_indices]
+                val_folder_dataset = VideoActionDataset(
+                    video_paths=val_video_paths,
+                    labels=val_labels,
+                    augment=False,
+                    **dataset_params
+                )
+                
+                train_datasets.append(train_folder_dataset)
+                val_datasets.append(val_folder_dataset)
+        
+        # Combine with main dataset if it exists
+        if train_dataset is not None:
+            train_datasets.insert(0, train_dataset)
+        if val_dataset is not None:
+            val_datasets.insert(0, val_dataset)
+        
+        # Concatenate all datasets
+        if train_datasets:
+            train_dataset = ConcatDataset(train_datasets)
+        if val_datasets:
+            val_dataset = ConcatDataset(val_datasets)
+    
+    # If still no dataset, raise an error
+    if train_dataset is None or len(train_dataset) == 0:
+        raise ValueError("No training data found. Please specify a dataset in config.yaml")
+    if val_dataset is None or len(val_dataset) == 0:
+        raise ValueError("No validation data found. Please specify a dataset in config.yaml")
+    
+    print(f"Total training samples: {len(train_dataset)}")
+    print(f"Total validation samples: {len(val_dataset)}")
     
     # Create dataloaders
     train_loader = DataLoader(
