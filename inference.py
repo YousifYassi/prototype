@@ -24,7 +24,7 @@ class UnsafeActionDetector:
     Real-time unsafe action detector with alert system
     """
     
-    def __init__(self, config, model_path):
+    def __init__(self, config, model_path, project_context=None):
         self.config = config
         self.device = torch.device(config['training']['device'] 
                                    if torch.cuda.is_available() else 'cpu')
@@ -37,8 +37,20 @@ class UnsafeActionDetector:
         self.model = self.load_model(model_path)
         self.model.eval()
         
+        # Project context for jurisdiction/industry-specific rules
+        self.project_context = project_context or {}
+        
         # Action classes
         self.action_classes = ['safe'] + config['unsafe_actions']
+        
+        # Load jurisdiction-specific actions if available
+        if project_context and 'jurisdiction_code' in project_context and 'industry_code' in project_context:
+            jurisdiction_industry_key = f"{project_context['jurisdiction_code']}_{project_context['industry_code']}"
+            if 'jurisdiction_industry_actions' in config:
+                specific_actions = config['jurisdiction_industry_actions'].get(jurisdiction_industry_key, [])
+                if specific_actions:
+                    self.action_classes = ['safe'] + specific_actions
+                    self.logger.info(f"Using {len(specific_actions)} actions for {jurisdiction_industry_key}")
         
         # Inference settings
         self.confidence_threshold = config['inference']['confidence_threshold']
@@ -48,6 +60,13 @@ class UnsafeActionDetector:
         # Alert settings
         self.alert_cooldown = config['inference']['alert_cooldown']
         self.last_alert_times = {}
+        
+        # Severity filtering
+        self.min_severity_alert = project_context.get('min_severity_alert', 1) if project_context else 1
+        
+        # Action severity mapping (loaded from database if available)
+        self.action_severity_map = {}
+        self.regulation_mapping = {}
         
         # Video buffer for temporal analysis
         self.video_buffer = StreamVideoBuffer(
@@ -172,7 +191,8 @@ class UnsafeActionDetector:
         self.last_alert_times[action_name] = current_time
         return True
     
-    def send_alert(self, action_class, confidence, frame=None, video_clip_path=None):
+    def send_alert(self, action_class, confidence, frame=None, video_clip_path=None, 
+                   severity_level=None, regulation_violation=None):
         """
         Send alert through configured notification methods
         
@@ -181,26 +201,35 @@ class UnsafeActionDetector:
             confidence: Confidence score
             frame: Current frame (for display/saving)
             video_clip_path: Path to saved video clip
+            severity_level: Severity level (1-5) (optional)
+            regulation_violation: Regulation violation details (optional)
         """
         if not self.alert_config['enabled']:
             return
         
         action_name = self.action_classes[action_class]
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        severity_label = self._get_severity_label(severity_level) if severity_level else "Unknown"
         
         alert_message = {
             'timestamp': timestamp,
             'action': action_name,
             'confidence': float(confidence),
+            'severity_level': severity_level,
+            'severity_label': severity_label,
+            'regulation_violation': regulation_violation,
             'video_clip': video_clip_path
         }
         
         # Console alert
         if 'console' in self.alert_config['methods']:
-            self.logger.warning(
-                f"⚠️  UNSAFE ACTION DETECTED: {action_name} "
+            console_msg = (
+                f"⚠️  UNSAFE ACTION DETECTED [{severity_label}]: {action_name} "
                 f"(Confidence: {confidence:.2%}) at {timestamp}"
             )
+            if regulation_violation:
+                console_msg += f"\n   Regulation: {regulation_violation}"
+            self.logger.warning(console_msg)
         
         # File logging
         if 'file' in self.alert_config['methods']:
@@ -255,6 +284,31 @@ class UnsafeActionDetector:
         
         return str(clip_path)
     
+    def set_severity_and_regulation_data(self, severity_map, regulation_map):
+        """
+        Set severity and regulation mappings from database
+        
+        Args:
+            severity_map: Dict mapping action names to severity levels
+            regulation_map: Dict mapping action names to regulation violations
+        """
+        self.action_severity_map = severity_map
+        self.regulation_mapping = regulation_map
+        self.logger.info(f"Loaded severity data for {len(severity_map)} actions")
+    
+    def get_action_severity(self, action_name):
+        """Get severity level for an action (1-5)"""
+        return self.action_severity_map.get(action_name, 3)  # Default to Medium (3)
+    
+    def should_alert_by_severity(self, action_name):
+        """Check if action severity meets minimum threshold for alerting"""
+        action_severity = self.get_action_severity(action_name)
+        return action_severity >= self.min_severity_alert
+    
+    def get_regulation_violation(self, action_name):
+        """Get regulation violation details for an action"""
+        return self.regulation_mapping.get(action_name, None)
+    
     def process_frame(self, frame):
         """
         Process a single frame from video stream
@@ -276,7 +330,8 @@ class UnsafeActionDetector:
             return {
                 'action': 'initializing',
                 'confidence': 0.0,
-                'alert': False
+                'alert': False,
+                'severity': 0
             }
         
         # Make prediction
@@ -285,9 +340,26 @@ class UnsafeActionDetector:
         # Apply temporal smoothing
         action_class, confidence = self.smooth_predictions(action_class, confidence)
         
+        action_name = self.action_classes[action_class]
+        
         # Check if unsafe action detected
         is_unsafe = action_class > 0 and confidence >= self.confidence_threshold
-        should_alert = is_unsafe and self.should_trigger_alert(action_class)
+        
+        # Get severity level
+        severity_level = self.get_action_severity(action_name) if is_unsafe else 0
+        
+        # Check if severity meets alerting threshold
+        meets_severity_threshold = self.should_alert_by_severity(action_name) if is_unsafe else False
+        
+        # Final alert decision
+        should_alert = (
+            is_unsafe and 
+            meets_severity_threshold and 
+            self.should_trigger_alert(action_class)
+        )
+        
+        # Get regulation violation details
+        regulation_violation = self.get_regulation_violation(action_name) if is_unsafe else None
         
         # Send alert if needed
         video_clip_path = None
@@ -300,18 +372,34 @@ class UnsafeActionDetector:
                     confidence
                 )
             
-            # Send alert
-            self.send_alert(action_class, confidence, frame, video_clip_path)
+            # Send alert with severity and regulation info
+            self.send_alert(action_class, confidence, frame, video_clip_path, 
+                          severity_level, regulation_violation)
         
         # Prepare result
         result = {
-            'action': self.action_classes[action_class],
+            'action': action_name,
             'confidence': confidence,
             'alert': should_alert,
-            'is_unsafe': is_unsafe
+            'is_unsafe': is_unsafe,
+            'severity': severity_level,
+            'severity_label': self._get_severity_label(severity_level),
+            'regulation_violation': regulation_violation
         }
         
         return result
+    
+    def _get_severity_label(self, severity_level):
+        """Convert severity level to label"""
+        labels = {
+            0: "Safe",
+            1: "Low",
+            2: "Medium",
+            3: "High",
+            4: "Critical",
+            5: "Emergency"
+        }
+        return labels.get(severity_level, "Unknown")
     
     def run_on_video(self, video_path, display=True, save_output=None):
         """

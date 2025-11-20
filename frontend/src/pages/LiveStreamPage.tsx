@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { api } from '../lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { api, projectApi } from '../lib/api';
 
 interface Stream {
   stream_id: string;
@@ -26,6 +27,7 @@ interface StreamFormData {
   name: string;
   source_url: string;
   source_type: 'rtsp' | 'rtmp' | 'http' | 'webcam';
+  project_id: number | null;
   fps: number;
 }
 
@@ -37,10 +39,17 @@ export default function LiveStreamPage() {
     name: '',
     source_url: '',
     source_type: 'rtsp',
+    project_id: null,
     fps: 30,
   });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Fetch projects
+  const { data: projectsData } = useQuery({
+    queryKey: ['projects'],
+    queryFn: projectApi.list,
+  });
 
   useEffect(() => {
     loadStreams();
@@ -66,14 +75,24 @@ export default function LiveStreamPage() {
     setError(null);
     setSuccess(null);
 
+    // Validate project_id is set
+    if (!formData.project_id) {
+      setError('Please select a project');
+      return;
+    }
+
     try {
-      await api.post('/streams', formData);
+      await api.post('/streams', {
+        ...formData,
+        project_id: formData.project_id,
+      });
       setSuccess('Stream added successfully!');
       setShowAddForm(false);
       setFormData({
         name: '',
         source_url: '',
         source_type: 'rtsp',
+        project_id: null,
         fps: 30,
       });
       loadStreams();
@@ -163,7 +182,7 @@ export default function LiveStreamPage() {
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="input"
                 placeholder="e.g., Warehouse Camera 1"
                 required
               />
@@ -181,7 +200,7 @@ export default function LiveStreamPage() {
                     source_type: e.target.value as StreamFormData['source_type'],
                   })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="input"
               >
                 <option value="rtsp">RTSP Camera</option>
                 <option value="rtmp">RTMP Stream</option>
@@ -200,7 +219,7 @@ export default function LiveStreamPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, source_url: e.target.value })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="input"
                 placeholder={
                   formData.source_type === 'webcam'
                     ? '0 (for default webcam)'
@@ -221,6 +240,30 @@ export default function LiveStreamPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
+                Project *
+              </label>
+              <select
+                value={formData.project_id || ''}
+                onChange={(e) =>
+                  setFormData({ ...formData, project_id: e.target.value ? parseInt(e.target.value) : null })
+                }
+                className="input"
+                required
+              >
+                <option value="">Select a project</option>
+                {projectsData?.projects.map((project: any) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name} ({project.jurisdiction.name} - {project.industry.name})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Streams must be associated with a project for jurisdiction-specific monitoring
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
                 FPS (Frames Per Second)
               </label>
               <input
@@ -229,7 +272,7 @@ export default function LiveStreamPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, fps: parseInt(e.target.value) })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="input"
                 min="1"
                 max="60"
                 required

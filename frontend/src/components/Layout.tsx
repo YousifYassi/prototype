@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { Home, Upload, Settings, LogOut, Shield, Video } from 'lucide-react'
+import { Home, Upload, Settings, LogOut, Shield, Video, FolderOpen } from 'lucide-react'
 
 export default function Layout() {
   const { user, logout } = useAuth()
@@ -59,6 +59,17 @@ export default function Layout() {
                 >
                   <Video className="h-4 w-4 mr-2" />
                   Live Streams
+                </Link>
+                <Link
+                  to="/projects"
+                  className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
+                    location.pathname.startsWith('/projects')
+                      ? 'border-primary-500 text-gray-900'
+                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                  }`}
+                >
+                  <FolderOpen className="h-4 w-4 mr-2" />
+                  Projects
                 </Link>
                 <Link
                   to="/config"

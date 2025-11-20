@@ -24,9 +24,14 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.action_detector import create_model
 from inference import UnsafeActionDetector
-from backend.database import get_db, User, VideoProcessing, AlertConfig
+from backend.database import (
+    get_db, User, VideoProcessing, AlertConfig, 
+    Jurisdiction, Industry, Project, JurisdictionRegulation, 
+    ActionSeverity, ProjectActionSeverity, Stream as StreamModel
+)
 from backend.notifications import send_email_alert, send_sms_alert
 from backend.stream_manager import StreamManager, StreamConfig, validate_stream_url
+from backend.model_registry import get_model_registry
 
 # Initialize FastAPI app
 app = FastAPI(title="Workplace Safety Monitoring API", version="1.0.0")
@@ -64,6 +69,37 @@ def get_detector():
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model not found: {model_path}")
         detector = UnsafeActionDetector(config, model_path)
+    return detector
+
+
+def get_detector_for_project(db: Session, project_id: int):
+    """Get a detector configured for a specific project's jurisdiction and industry"""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    
+    if not project:
+        return get_detector()
+    
+    # Get model registry
+    registry = get_model_registry()
+    
+    # Get appropriate model path
+    model_path, model_type = registry.get_model_path(
+        jurisdiction_code=project.jurisdiction.code,
+        industry_code=project.industry.code,
+        custom_path=project.model_path
+    )
+    
+    # Create detector with project-specific model
+    detector = UnsafeActionDetector(config, model_path)
+    
+    # Store project context for filtering
+    detector.project_context = {
+        "project_id": project.id,
+        "jurisdiction_id": project.jurisdiction_id,
+        "industry_id": project.industry_id,
+        "min_severity_alert": project.min_severity_alert
+    }
+    
     return detector
 
 def get_stream_manager():
@@ -128,6 +164,7 @@ class StreamCreate(BaseModel):
     name: str
     source_url: str
     source_type: str  # 'rtsp', 'rtmp', 'http', 'webcam'
+    project_id: int
     fps: int = 30
     
     @validator('source_type')
@@ -141,6 +178,45 @@ class StreamCreate(BaseModel):
     def validate_fps(cls, v):
         if v < 1 or v > 60:
             raise ValueError('fps must be between 1 and 60')
+        return v
+
+
+class ProjectCreate(BaseModel):
+    name: str
+    jurisdiction_id: int
+    industry_id: int
+    model_path: Optional[str] = None
+    confidence_threshold_override: Optional[str] = None  # JSON string
+    min_severity_alert: int = 1
+    
+    @validator('min_severity_alert')
+    def validate_min_severity(cls, v):
+        if v < 1 or v > 5:
+            raise ValueError('min_severity_alert must be between 1 and 5')
+        return v
+
+
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    model_path: Optional[str] = None
+    confidence_threshold_override: Optional[str] = None
+    min_severity_alert: Optional[int] = None
+    
+    @validator('min_severity_alert')
+    def validate_min_severity(cls, v):
+        if v is not None and (v < 1 or v > 5):
+            raise ValueError('min_severity_alert must be between 1 and 5')
+        return v
+
+
+class ActionSeverityUpdate(BaseModel):
+    action_name: str
+    custom_severity_level: int
+    
+    @validator('custom_severity_level')
+    def validate_severity(cls, v):
+        if v < 1 or v > 5:
+            raise ValueError('custom_severity_level must be between 1 and 5')
         return v
 
 
@@ -385,10 +461,365 @@ async def update_alert_config(
     }
 
 
+# ===== Jurisdiction & Industry Management =====
+
+@app.get("/jurisdictions")
+async def list_jurisdictions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List all available jurisdictions"""
+    jurisdictions = db.query(Jurisdiction).filter(Jurisdiction.is_active == True).all()
+    
+    return {
+        "jurisdictions": [
+            {
+                "id": j.id,
+                "name": j.name,
+                "code": j.code,
+                "country": j.country,
+                "regulation_url": j.regulation_url,
+                "description": j.description
+            }
+            for j in jurisdictions
+        ]
+    }
+
+
+@app.get("/industries")
+async def list_industries(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List all available industries"""
+    industries = db.query(Industry).filter(Industry.is_active == True).all()
+    
+    return {
+        "industries": [
+            {
+                "id": i.id,
+                "name": i.name,
+                "code": i.code,
+                "description": i.description,
+                "hazard_categories": json.loads(i.hazard_categories) if i.hazard_categories else []
+            }
+            for i in industries
+        ]
+    }
+
+
+@app.get("/jurisdictions/{jurisdiction_id}/regulations")
+async def get_regulations(
+    jurisdiction_id: int,
+    industry_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get regulations for a specific jurisdiction and optionally industry"""
+    query = db.query(JurisdictionRegulation).filter(
+        JurisdictionRegulation.jurisdiction_id == jurisdiction_id
+    )
+    
+    if industry_id:
+        query = query.filter(JurisdictionRegulation.industry_id == industry_id)
+    
+    regulations = query.all()
+    
+    return {
+        "regulations": [
+            {
+                "id": r.id,
+                "regulation_code": r.regulation_code,
+                "title": r.title,
+                "description": r.description,
+                "violation_mapping": json.loads(r.violation_mapping) if r.violation_mapping else {},
+                "industry_id": r.industry_id
+            }
+            for r in regulations
+        ]
+    }
+
+
+# ===== Project Management =====
+
+@app.post("/projects")
+async def create_project(
+    project_data: ProjectCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new project"""
+    # Validate jurisdiction exists
+    jurisdiction = db.query(Jurisdiction).filter(Jurisdiction.id == project_data.jurisdiction_id).first()
+    if not jurisdiction:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Jurisdiction not found"
+        )
+    
+    # Validate industry exists
+    industry = db.query(Industry).filter(Industry.id == project_data.industry_id).first()
+    if not industry:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Industry not found"
+        )
+    
+    # Create project
+    project = Project(
+        user_id=current_user.id,
+        name=project_data.name,
+        jurisdiction_id=project_data.jurisdiction_id,
+        industry_id=project_data.industry_id,
+        model_path=project_data.model_path,
+        confidence_threshold_override=project_data.confidence_threshold_override,
+        min_severity_alert=project_data.min_severity_alert
+    )
+    
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+    
+    return {
+        "project_id": project.id,
+        "name": project.name,
+        "jurisdiction": {
+            "id": jurisdiction.id,
+            "name": jurisdiction.name,
+            "code": jurisdiction.code
+        },
+        "industry": {
+            "id": industry.id,
+            "name": industry.name,
+            "code": industry.code
+        },
+        "min_severity_alert": project.min_severity_alert,
+        "created_at": project.created_at.isoformat()
+    }
+
+
+@app.get("/projects")
+async def list_projects(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List user's projects"""
+    projects = db.query(Project).filter(Project.user_id == current_user.id).all()
+    
+    return {
+        "projects": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "jurisdiction": {
+                    "id": p.jurisdiction.id,
+                    "name": p.jurisdiction.name,
+                    "code": p.jurisdiction.code
+                },
+                "industry": {
+                    "id": p.industry.id,
+                    "name": p.industry.name,
+                    "code": p.industry.code
+                },
+                "min_severity_alert": p.min_severity_alert,
+                "video_count": len(p.videos),
+                "stream_count": len(p.streams),
+                "created_at": p.created_at.isoformat(),
+                "updated_at": p.updated_at.isoformat()
+            }
+            for p in projects
+        ]
+    }
+
+
+@app.get("/projects/{project_id}")
+async def get_project(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get project details"""
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.user_id == current_user.id
+    ).first()
+    
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+    
+    # Get action severities for this jurisdiction/industry
+    action_severities = db.query(ActionSeverity).filter(
+        ActionSeverity.jurisdiction_id == project.jurisdiction_id,
+        ActionSeverity.industry_id == project.industry_id
+    ).all()
+    
+    # Get custom severities for this project
+    custom_severities = db.query(ProjectActionSeverity).filter(
+        ProjectActionSeverity.project_id == project_id
+    ).all()
+    
+    custom_severity_map = {cs.action_name: cs.custom_severity_level for cs in custom_severities}
+    
+    return {
+        "id": project.id,
+        "name": project.name,
+        "jurisdiction": {
+            "id": project.jurisdiction.id,
+            "name": project.jurisdiction.name,
+            "code": project.jurisdiction.code,
+            "regulation_url": project.jurisdiction.regulation_url
+        },
+        "industry": {
+            "id": project.industry.id,
+            "name": project.industry.name,
+            "code": project.industry.code
+        },
+        "model_path": project.model_path,
+        "confidence_threshold_override": json.loads(project.confidence_threshold_override) if project.confidence_threshold_override else None,
+        "min_severity_alert": project.min_severity_alert,
+        "action_severities": [
+            {
+                "action_name": asev.action_name,
+                "severity_level": custom_severity_map.get(asev.action_name, asev.severity_level),
+                "default_severity": asev.severity_level,
+                "is_custom": asev.action_name in custom_severity_map,
+                "notification_priority": asev.notification_priority,
+                "description": asev.description
+            }
+            for asev in action_severities
+        ],
+        "created_at": project.created_at.isoformat(),
+        "updated_at": project.updated_at.isoformat()
+    }
+
+
+@app.put("/projects/{project_id}")
+async def update_project(
+    project_id: int,
+    project_update: ProjectUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update project settings"""
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.user_id == current_user.id
+    ).first()
+    
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+    
+    # Update fields
+    if project_update.name is not None:
+        project.name = project_update.name
+    if project_update.model_path is not None:
+        project.model_path = project_update.model_path
+    if project_update.confidence_threshold_override is not None:
+        project.confidence_threshold_override = project_update.confidence_threshold_override
+    if project_update.min_severity_alert is not None:
+        project.min_severity_alert = project_update.min_severity_alert
+    
+    db.commit()
+    db.refresh(project)
+    
+    return {
+        "message": "Project updated successfully",
+        "project_id": project.id,
+        "name": project.name
+    }
+
+
+@app.delete("/projects/{project_id}")
+async def delete_project(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a project"""
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.user_id == current_user.id
+    ).first()
+    
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+    
+    # Check if project has active streams
+    active_streams = db.query(StreamModel).filter(
+        StreamModel.project_id == project_id,
+        StreamModel.status == "active"
+    ).count()
+    
+    if active_streams > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete project with active streams. Stop all streams first."
+        )
+    
+    db.delete(project)
+    db.commit()
+    
+    return {"message": "Project deleted successfully"}
+
+
+@app.put("/projects/{project_id}/action-severity")
+async def update_action_severity(
+    project_id: int,
+    severity_update: ActionSeverityUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update custom severity level for an action in a project"""
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.user_id == current_user.id
+    ).first()
+    
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+    
+    # Check if custom severity already exists
+    custom_severity = db.query(ProjectActionSeverity).filter(
+        ProjectActionSeverity.project_id == project_id,
+        ProjectActionSeverity.action_name == severity_update.action_name
+    ).first()
+    
+    if custom_severity:
+        custom_severity.custom_severity_level = severity_update.custom_severity_level
+    else:
+        custom_severity = ProjectActionSeverity(
+            project_id=project_id,
+            action_name=severity_update.action_name,
+            custom_severity_level=severity_update.custom_severity_level
+        )
+        db.add(custom_severity)
+    
+    db.commit()
+    
+    return {
+        "message": "Action severity updated successfully",
+        "action_name": severity_update.action_name,
+        "custom_severity_level": severity_update.custom_severity_level
+    }
+
+
 async def process_video_task(
     video_id: str,
     video_path: str,
     user_id: str,
+    project_id: Optional[int] = None,
 ):
     """Process video in a worker thread so the event loop stays responsive."""
     from backend.database import SessionLocal
@@ -427,11 +858,17 @@ async def process_video_task(
             video_record.status = "processing"
             db.commit()
 
-            detector = get_detector()
+            # Get detector with project-specific model if available
+            detector = get_detector_for_project(db, project_id) if project_id else get_detector()
 
             alert_config = db.query(AlertConfig).filter(
                 AlertConfig.user_id == user_id
             ).first()
+            
+            # Get project for severity filtering
+            project = None
+            if project_id:
+                project = db.query(Project).filter(Project.id == project_id).first()
 
             import cv2
             cap = cv2.VideoCapture(video_path)
@@ -499,6 +936,7 @@ async def process_video_task(
 @app.post("/videos/upload", response_model=VideoUploadResponse)
 async def upload_video(
     file: UploadFile = File(...),
+    project_id: Optional[int] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -506,6 +944,19 @@ async def upload_video(
     Upload video for processing
     Video will be processed in background and alerts sent if unsafe actions detected
     """
+    # Validate project if provided
+    if project_id:
+        project = db.query(Project).filter(
+            Project.id == project_id,
+            Project.user_id == current_user.id
+        ).first()
+        
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+    
     # Validate file type
     if not file.content_type.startswith("video/"):
         raise HTTPException(
@@ -537,6 +988,7 @@ async def upload_video(
     video_record = VideoProcessing(
         id=video_id,
         user_id=current_user.id,
+        project_id=project_id,
         filename=file.filename,
         filepath=str(video_path),
         status="uploaded"
@@ -550,6 +1002,7 @@ async def upload_video(
             video_id,
             str(video_path),
             current_user.id,
+            project_id,
         )
     )
     
@@ -726,12 +1179,25 @@ async def list_videos(
 @app.post("/streams")
 async def create_stream(
     stream_data: StreamCreate,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Create and start a new live video stream
     Supports RTSP, RTMP, HTTP streams, and webcams
     """
+    # Validate project exists and belongs to user
+    project = db.query(Project).filter(
+        Project.id == stream_data.project_id,
+        Project.user_id == current_user.id
+    ).first()
+    
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+    
     # Validate stream URL
     if not validate_stream_url(stream_data.source_url, stream_data.source_type):
         raise HTTPException(
@@ -763,6 +1229,19 @@ async def create_stream(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to start stream"
         )
+    
+    # Save stream to database
+    stream_db = StreamModel(
+        id=stream_id,
+        project_id=stream_data.project_id,
+        name=stream_data.name,
+        source_url=stream_data.source_url,
+        source_type=stream_data.source_type,
+        status="active",
+        fps=stream_data.fps
+    )
+    db.add(stream_db)
+    db.commit()
     
     return {
         "stream_id": stream_id,

@@ -39,6 +39,37 @@ unsafe_actions:
   - "pedestrian_collision_risk"
   - "near_miss"
 
+# Jurisdiction and Industry-Specific Action Categories
+jurisdiction_industry_actions:
+  ontario_food_safety:
+    - "no_hair_net"
+    - "no_gloves"
+    - "cross_contamination"
+    - "improper_temperature_handling"
+    - "improper_uniform"
+  
+  ontario_construction:
+    - "no_hard_hat"
+    - "no_safety_harness"
+    - "unsafe_scaffolding"
+    - "no_high_visibility_vest"
+    - "improper_hard_hat"
+  
+  ontario_light_industry:
+    - "no_safety_glasses"
+    - "loose_clothing_near_machinery"
+    - "improper_lifting"
+    - "improper_eye_protection"
+    - "unsecured_hair"
+    - "jewelry_near_machinery"
+    - "overloading"
+  
+  generic_general:
+    - "unsafe_behavior"
+    - "slip_trip_hazard"
+    - "blocked_emergency_exit"
+    - "fire_hazard"
+
 # Model Configuration
 model:
   architecture: "video_action_detector"  # Options: video_action_detector, slowfast, i3d

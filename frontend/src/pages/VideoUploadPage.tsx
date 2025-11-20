@@ -1,18 +1,26 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
-import { videoApi } from '../lib/api'
-import { Upload, FileVideo, X, CheckCircle, AlertCircle } from 'lucide-react'
+import { videoApi, projectApi } from '../lib/api'
+import { Upload, FileVideo, X, CheckCircle, AlertCircle, FolderOpen } from 'lucide-react'
 
 export default function VideoUploadPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [dragActive, setDragActive] = useState(false)
 
+  // Fetch projects
+  const { data: projectsData } = useQuery({
+    queryKey: ['projects'],
+    queryFn: projectApi.list,
+  })
+
   const uploadMutation = useMutation({
-    mutationFn: videoApi.upload,
+    mutationFn: ({ file, projectId }: { file: File; projectId?: number }) => 
+      videoApi.upload(file, projectId),
     onSuccess: (data) => {
       toast.success('Video uploaded successfully! Processing in background...')
       setSelectedFile(null)
@@ -72,7 +80,10 @@ export default function VideoUploadPage() {
 
   const handleUpload = () => {
     if (selectedFile) {
-      uploadMutation.mutate(selectedFile)
+      uploadMutation.mutate({ 
+        file: selectedFile, 
+        projectId: selectedProjectId || undefined 
+      })
     }
   }
 
@@ -93,6 +104,36 @@ export default function VideoUploadPage() {
           Upload a video file to analyze for unsafe workplace actions
         </p>
       </div>
+
+      {/* Project Selector */}
+      {projectsData && projectsData.projects.length > 0 && (
+        <div className="card">
+          <div className="flex items-start space-x-3">
+            <FolderOpen className="h-5 w-5 text-primary-600 mt-0.5" />
+            <div className="flex-1">
+              <label htmlFor="project" className="block text-sm font-medium text-gray-900 mb-2">
+                Select Project (Optional)
+              </label>
+              <select
+                id="project"
+                value={selectedProjectId || ''}
+                onChange={(e) => setSelectedProjectId(e.target.value ? parseInt(e.target.value) : null)}
+                className="input"
+              >
+                <option value="">No project (use default settings)</option>
+                {projectsData.projects.map((project: any) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name} ({project.jurisdiction.name} - {project.industry.name})
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-xs text-gray-500">
+                Associating with a project applies jurisdiction and industry-specific safety rules
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Upload Section */}
       <div className="card">
