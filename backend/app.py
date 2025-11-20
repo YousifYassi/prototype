@@ -9,7 +9,7 @@ import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
-from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, status
+from fastapi import FastAPI, File, UploadFile, Form, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr, validator
@@ -663,6 +663,23 @@ async def get_project(
     
     custom_severity_map = {cs.action_name: cs.custom_severity_level for cs in custom_severities}
     
+    # Get videos associated with this project
+    videos = db.query(VideoProcessing).filter(
+        VideoProcessing.project_id == project_id
+    ).order_by(VideoProcessing.uploaded_at.desc()).all()
+    
+    # Get video statistics
+    total_videos = len(videos)
+    safe_videos = sum(1 for v in videos if v.status == "safe")
+    unsafe_videos = sum(1 for v in videos if v.status == "unsafe_detected")
+    processing_videos = sum(1 for v in videos if v.status in ["uploaded", "processing"])
+    
+    # Get stream count
+    active_streams = db.query(StreamModel).filter(
+        StreamModel.project_id == project_id,
+        StreamModel.status == "active"
+    ).count()
+    
     return {
         "id": project.id,
         "name": project.name,
@@ -690,6 +707,23 @@ async def get_project(
                 "description": asev.description
             }
             for asev in action_severities
+        ],
+        "stats": {
+            "total_videos": total_videos,
+            "safe_videos": safe_videos,
+            "unsafe_videos": unsafe_videos,
+            "processing_videos": processing_videos,
+            "active_streams": active_streams
+        },
+        "videos": [
+            {
+                "video_id": v.id,
+                "filename": v.filename,
+                "status": v.status,
+                "uploaded_at": v.uploaded_at.isoformat(),
+                "processed_at": v.processed_at.isoformat() if v.processed_at else None
+            }
+            for v in videos
         ],
         "created_at": project.created_at.isoformat(),
         "updated_at": project.updated_at.isoformat()
@@ -936,7 +970,7 @@ async def process_video_task(
 @app.post("/videos/upload", response_model=VideoUploadResponse)
 async def upload_video(
     file: UploadFile = File(...),
-    project_id: Optional[int] = None,
+    project_id: Optional[int] = Form(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -1034,6 +1068,28 @@ async def get_video_status(
     
     result_data = json.loads(video.result) if video.result else {}
     
+    # Get project information if associated
+    project_info = None
+    if video.project_id:
+        project = db.query(Project).filter(Project.id == video.project_id).first()
+        if project:
+            jurisdiction = db.query(Jurisdiction).filter(Jurisdiction.id == project.jurisdiction_id).first()
+            industry = db.query(Industry).filter(Industry.id == project.industry_id).first()
+            project_info = {
+                "id": project.id,
+                "name": project.name,
+                "jurisdiction": {
+                    "id": jurisdiction.id,
+                    "name": jurisdiction.name,
+                    "code": jurisdiction.code
+                } if jurisdiction else None,
+                "industry": {
+                    "id": industry.id,
+                    "name": industry.name,
+                    "code": industry.code
+                } if industry else None
+            }
+    
     return {
         "video_id": video.id,
         "filename": video.filename,
@@ -1041,7 +1097,8 @@ async def get_video_status(
         "uploaded_at": video.uploaded_at.isoformat(),
         "processed_at": video.processed_at.isoformat() if video.processed_at else None,
         "result": result_data,
-        "filepath": video.filepath
+        "filepath": video.filepath,
+        "project": project_info
     }
 
 
@@ -1157,17 +1214,30 @@ async def list_videos(
         VideoProcessing.user_id == current_user.id
     ).order_by(VideoProcessing.uploaded_at.desc()).limit(limit).offset(offset).all()
     
+    video_list = []
+    for v in videos:
+        video_data = {
+            "video_id": v.id,
+            "filename": v.filename,
+            "status": v.status,
+            "uploaded_at": v.uploaded_at.isoformat(),
+            "processed_at": v.processed_at.isoformat() if v.processed_at else None,
+            "project": None
+        }
+        
+        # Add project info if associated
+        if v.project_id:
+            project = db.query(Project).filter(Project.id == v.project_id).first()
+            if project:
+                video_data["project"] = {
+                    "id": project.id,
+                    "name": project.name
+                }
+        
+        video_list.append(video_data)
+    
     return {
-        "videos": [
-            {
-                "video_id": v.id,
-                "filename": v.filename,
-                "status": v.status,
-                "uploaded_at": v.uploaded_at.isoformat(),
-                "processed_at": v.processed_at.isoformat() if v.processed_at else None
-            }
-            for v in videos
-        ],
+        "videos": video_list,
         "total": db.query(VideoProcessing).filter(
             VideoProcessing.user_id == current_user.id
         ).count()

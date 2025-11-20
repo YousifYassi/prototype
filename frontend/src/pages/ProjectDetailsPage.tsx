@@ -5,8 +5,9 @@ import { toast } from 'react-toastify'
 import { projectApi } from '../lib/api'
 import { 
   ArrowLeft, Settings, FileText, Camera, FileVideo, 
-  Trash2, AlertTriangle, Shield, ExternalLink 
+  Trash2, AlertTriangle, Shield, ExternalLink, CheckCircle, Clock, Play, Save, Building2 
 } from 'lucide-react'
+import SeveritySelector from '../components/SeveritySelector'
 
 export default function ProjectDetailsPage() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -14,6 +15,11 @@ export default function ProjectDetailsPage() {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'overview' | 'regulations' | 'settings'>('overview')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    min_severity_alert: 1,
+  })
 
   const { data: project, isLoading, error } = useQuery({
     queryKey: ['project', projectId],
@@ -32,6 +38,46 @@ export default function ProjectDetailsPage() {
       toast.error(error.response?.data?.detail || 'Failed to delete project')
     },
   })
+
+  const updateMutation = useMutation({
+    mutationFn: (data: { name?: string; min_severity_alert?: number }) => 
+      projectApi.update(parseInt(projectId!), data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      toast.success('Project updated successfully')
+      setIsEditing(false)
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.detail || 'Failed to update project')
+    },
+  })
+
+  const handleStartEdit = () => {
+    if (project) {
+      setEditFormData({
+        name: project.name,
+        min_severity_alert: project.min_severity_alert,
+      })
+      setIsEditing(true)
+    }
+  }
+
+  const handleSaveChanges = () => {
+    if (!editFormData.name.trim()) {
+      toast.error('Please enter a project name')
+      return
+    }
+
+    updateMutation.mutate({
+      name: editFormData.name,
+      min_severity_alert: editFormData.min_severity_alert,
+    })
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditing(false)
+  }
 
   if (isLoading) {
     return (
@@ -146,7 +192,9 @@ export default function ProjectDetailsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Active Cameras</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">0</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {project.stats?.active_streams || 0}
+                  </p>
                 </div>
                 <Camera className="h-8 w-8 text-blue-500" />
               </div>
@@ -156,7 +204,9 @@ export default function ProjectDetailsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Videos Processed</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">0</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {project.stats?.total_videos || 0}
+                  </p>
                 </div>
                 <FileVideo className="h-8 w-8 text-green-500" />
               </div>
@@ -196,6 +246,83 @@ export default function ProjectDetailsPage() {
               <p className="text-gray-600 text-center py-8">
                 No severity levels configured for this jurisdiction and industry combination.
               </p>
+            )}
+          </div>
+
+          {/* Associated Videos */}
+          <div className="card">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Associated Videos</h3>
+              {project.videos && project.videos.length > 0 && (
+                <div className="flex items-center space-x-2 text-sm">
+                  {project.stats && (
+                    <>
+                      <span className="flex items-center text-green-600">
+                        <CheckCircle className="h-4 w-4 mr-1" />
+                        {project.stats.safe_videos} safe
+                      </span>
+                      {project.stats.unsafe_videos > 0 && (
+                        <span className="flex items-center text-red-600">
+                          <AlertTriangle className="h-4 w-4 mr-1" />
+                          {project.stats.unsafe_videos} unsafe
+                        </span>
+                      )}
+                      {project.stats.processing_videos > 0 && (
+                        <span className="flex items-center text-blue-600">
+                          <Clock className="h-4 w-4 mr-1" />
+                          {project.stats.processing_videos} processing
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            {project.videos && project.videos.length > 0 ? (
+              <div className="space-y-2">
+                {project.videos.map((video: any) => (
+                  <div
+                    key={video.video_id}
+                    className="flex items-center justify-between py-3 px-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                    onClick={() => navigate(`/video/${video.video_id}`)}
+                  >
+                    <div className="flex items-center space-x-3 flex-1 min-w-0">
+                      <FileVideo className="h-5 w-5 text-gray-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-900 truncate">{video.filename}</p>
+                        <p className="text-sm text-gray-500">
+                          Uploaded {new Date(video.uploaded_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getVideoStatusColor(video.status)}`}>
+                        {video.status.replace('_', ' ')}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          navigate(`/video/${video.video_id}`)
+                        }}
+                        className="text-blue-600 hover:text-blue-700"
+                      >
+                        <Play className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <FileVideo className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-600 mb-4">No videos uploaded to this project yet</p>
+                <button
+                  onClick={() => navigate('/upload')}
+                  className="btn-primary"
+                >
+                  Upload First Video
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -238,26 +365,157 @@ export default function ProjectDetailsPage() {
 
       {activeTab === 'settings' && (
         <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Project Settings</h3>
-          <p className="text-gray-600 mb-6">
-            Advanced project settings and customization options coming soon.
-          </p>
-          
-          <div className="space-y-4">
+          <div className="flex justify-between items-center mb-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Project Name
-              </label>
-              <p className="text-gray-900">{project.name}</p>
+              <h3 className="text-lg font-semibold text-gray-900">Project Settings</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Update project configuration and settings
+              </p>
             </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Minimum Alert Severity
-              </label>
-              <p className="text-gray-900">{getSeverityLabel(project.min_severity_alert)}</p>
-            </div>
+            {!isEditing && (
+              <button
+                onClick={handleStartEdit}
+                className="btn-primary flex items-center"
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                Edit Settings
+              </button>
+            )}
           </div>
+          
+          {!isEditing ? (
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Project Name
+                </label>
+                <p className="text-gray-900 text-lg">{project.name}</p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Jurisdiction
+                  </label>
+                  <div className="flex items-center space-x-2">
+                    <Shield className="h-4 w-4 text-blue-600" />
+                    <p className="text-gray-900">{project.jurisdiction.name} ({project.jurisdiction.code.toUpperCase()})</p>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Cannot be changed after creation</p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Industry
+                  </label>
+                  <div className="flex items-center space-x-2">
+                    <Building2 className="h-4 w-4 text-green-600" />
+                    <p className="text-gray-900">{project.industry.name}</p>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Cannot be changed after creation</p>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Minimum Alert Severity
+                </label>
+                <div className={`inline-flex px-4 py-2 rounded-lg font-medium ${getSeverityColor(project.min_severity_alert)}`}>
+                  {getSeverityLabel(project.min_severity_alert)}
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Only violations at this severity level or higher will trigger alerts
+                </p>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start space-x-2">
+                  <AlertTriangle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-blue-800">
+                    <p className="font-medium mb-1">Note About Jurisdiction & Industry</p>
+                    <p>
+                      Jurisdiction and industry cannot be changed after project creation as they determine
+                      the applicable safety regulations and severity mappings. If you need different
+                      regulations, please create a new project.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={(e) => { e.preventDefault(); handleSaveChanges(); }} className="space-y-6">
+              <div>
+                <label htmlFor="edit-name" className="block text-sm font-medium text-gray-700 mb-2">
+                  Project Name *
+                </label>
+                <input
+                  type="text"
+                  id="edit-name"
+                  value={editFormData.name}
+                  onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                  placeholder="e.g., Main Restaurant Kitchen"
+                  className="input"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Jurisdiction
+                  </label>
+                  <div className="input bg-gray-50 cursor-not-allowed flex items-center space-x-2">
+                    <Shield className="h-4 w-4 text-blue-600" />
+                    <span className="text-gray-600">{project.jurisdiction.name}</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Cannot be changed</p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Industry
+                  </label>
+                  <div className="input bg-gray-50 cursor-not-allowed flex items-center space-x-2">
+                    <Building2 className="h-4 w-4 text-green-600" />
+                    <span className="text-gray-600">{project.industry.name}</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Cannot be changed</p>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="edit-severity" className="block text-sm font-medium text-gray-700 mb-2">
+                  Minimum Alert Severity *
+                </label>
+                <SeveritySelector
+                  value={editFormData.min_severity_alert}
+                  onChange={(value) => setEditFormData({ ...editFormData, min_severity_alert: value })}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Set the minimum severity level to trigger alerts and notifications
+                </p>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="btn-secondary"
+                  disabled={updateMutation.isPending}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updateMutation.isPending}
+                  className="btn-primary flex items-center disabled:opacity-50"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       )}
 
@@ -315,5 +573,16 @@ function getSeverityColor(level: number): string {
     5: 'bg-purple-100 text-purple-800',
   }
   return colors[level] || 'bg-gray-100 text-gray-800'
+}
+
+function getVideoStatusColor(status: string): string {
+  const colors: Record<string, string> = {
+    'safe': 'bg-green-100 text-green-800',
+    'unsafe_detected': 'bg-red-100 text-red-800',
+    'processing': 'bg-blue-100 text-blue-800',
+    'uploaded': 'bg-gray-100 text-gray-800',
+    'error': 'bg-orange-100 text-orange-800',
+  }
+  return colors[status] || 'bg-gray-100 text-gray-800'
 }
 

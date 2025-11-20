@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { videoApi, projectApi } from '../lib/api'
 import { Upload, FileVideo, X, CheckCircle, AlertCircle, FolderOpen } from 'lucide-react'
+import Select, { SelectOption } from '../components/Select'
 
 export default function VideoUploadPage() {
   const navigate = useNavigate()
@@ -17,6 +18,21 @@ export default function VideoUploadPage() {
     queryKey: ['projects'],
     queryFn: projectApi.list,
   })
+
+  const projectOptions: SelectOption[] = useMemo(() => {
+    const options: SelectOption[] = [
+      { value: '', label: 'No project', description: 'Use default settings' }
+    ];
+    if (projectsData?.projects) {
+      const projectOpts = projectsData.projects.map((project: any) => ({
+        value: project.id,
+        label: project.name,
+        description: `${project.jurisdiction.name} - ${project.industry.name}`
+      }));
+      options.push(...projectOpts);
+    }
+    return options;
+  }, [projectsData]);
 
   const uploadMutation = useMutation({
     mutationFn: ({ file, projectId }: { file: File; projectId?: number }) => 
@@ -114,19 +130,12 @@ export default function VideoUploadPage() {
               <label htmlFor="project" className="block text-sm font-medium text-gray-900 mb-2">
                 Select Project (Optional)
               </label>
-              <select
-                id="project"
+              <Select
                 value={selectedProjectId || ''}
-                onChange={(e) => setSelectedProjectId(e.target.value ? parseInt(e.target.value) : null)}
-                className="input"
-              >
-                <option value="">No project (use default settings)</option>
-                {projectsData.projects.map((project: any) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name} ({project.jurisdiction.name} - {project.industry.name})
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setSelectedProjectId(value ? Number(value) : null)}
+                options={projectOptions}
+                placeholder="Select a project"
+              />
               <p className="mt-2 text-xs text-gray-500">
                 Associating with a project applies jurisdiction and industry-specific safety rules
               </p>

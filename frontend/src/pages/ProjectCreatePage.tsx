@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { projectApi, jurisdictionApi, industryApi } from '../lib/api'
 import { ArrowLeft, Save, AlertCircle } from 'lucide-react'
+import SeveritySelector from '../components/SeveritySelector'
+import Select, { SelectOption } from '../components/Select'
 
 export default function ProjectCreatePage() {
   const navigate = useNavigate()
@@ -68,6 +70,24 @@ export default function ProjectCreatePage() {
   const jurisdictions = jurisdictionsData?.jurisdictions || []
   const industries = industriesData?.industries || []
 
+  const jurisdictionOptions: SelectOption[] = useMemo(() => 
+    jurisdictions.map((j: any) => ({
+      value: j.id,
+      label: j.name,
+      description: j.country
+    })),
+    [jurisdictions]
+  )
+
+  const industryOptions: SelectOption[] = useMemo(() =>
+    industries.map((i: any) => ({
+      value: i.id,
+      label: i.name,
+      description: i.description || undefined
+    })),
+    [industries]
+  )
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
@@ -111,20 +131,12 @@ export default function ProjectCreatePage() {
           <label htmlFor="jurisdiction" className="block text-sm font-medium text-gray-700 mb-2">
             Jurisdiction *
           </label>
-          <select
-            id="jurisdiction"
+          <Select
             value={formData.jurisdiction_id}
-            onChange={(e) => setFormData({ ...formData, jurisdiction_id: e.target.value })}
-            className="input"
-            required
-          >
-            <option value="">Select a jurisdiction</option>
-            {jurisdictions.map((j: any) => (
-              <option key={j.id} value={j.id}>
-                {j.name} ({j.country})
-              </option>
-            ))}
-          </select>
+            onChange={(value) => setFormData({ ...formData, jurisdiction_id: value as string })}
+            options={jurisdictionOptions}
+            placeholder="Select a jurisdiction"
+          />
           <p className="mt-1 text-xs text-gray-500">
             Select the legal jurisdiction for workplace safety regulations
           </p>
@@ -135,20 +147,12 @@ export default function ProjectCreatePage() {
           <label htmlFor="industry" className="block text-sm font-medium text-gray-700 mb-2">
             Industry *
           </label>
-          <select
-            id="industry"
+          <Select
             value={formData.industry_id}
-            onChange={(e) => setFormData({ ...formData, industry_id: e.target.value })}
-            className="input"
-            required
-          >
-            <option value="">Select an industry</option>
-            {industries.map((i: any) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => setFormData({ ...formData, industry_id: value as string })}
+            options={industryOptions}
+            placeholder="Select an industry"
+          />
           <p className="mt-1 text-xs text-gray-500">
             Select the industry type for specialized safety monitoring
           </p>
@@ -159,18 +163,10 @@ export default function ProjectCreatePage() {
           <label htmlFor="severity" className="block text-sm font-medium text-gray-700 mb-2">
             Minimum Alert Severity
           </label>
-          <select
-            id="severity"
+          <SeveritySelector
             value={formData.min_severity_alert}
-            onChange={(e) => setFormData({ ...formData, min_severity_alert: parseInt(e.target.value) })}
-            className="input"
-          >
-            <option value="1">Low (1) - All violations</option>
-            <option value="2">Medium (2) - Medium and above</option>
-            <option value="3">High (3) - High and above</option>
-            <option value="4">Critical (4) - Critical and emergency only</option>
-            <option value="5">Emergency (5) - Emergency only</option>
-          </select>
+            onChange={(value) => setFormData({ ...formData, min_severity_alert: value })}
+          />
           <p className="mt-1 text-xs text-gray-500">
             Set the minimum severity level to trigger alerts and notifications
           </p>

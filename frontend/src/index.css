@@ -46,11 +46,21 @@ body {
   }
   
   .input {
-    @apply w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 
+    @apply w-full px-4 py-3 bg-white text-gray-900 placeholder-gray-500 
            transition-all duration-200
-           hover:border-gray-400
            focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
            disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed;
+    /* Explicit borders on all four sides */
+    border: 2px solid #d1d5db;
+    border-radius: 0.5rem;
+  }
+  
+  .input:hover:not(:disabled) {
+    border-color: #9ca3af;
+  }
+  
+  .input:focus {
+    border-color: #3b82f6;
   }
   
   .card {
@@ -68,10 +78,23 @@ input[type="url"],
 input[type="file"],
 select,
 textarea {
-  @apply px-4 py-3 bg-white border-2 border-gray-300 rounded-lg text-gray-900 placeholder-gray-500
+  @apply px-4 py-3 bg-white text-gray-900 placeholder-gray-500
          transition-all duration-200
-         hover:border-gray-400
          focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500;
+  /* Explicit border on all sides */
+  border: 2px solid #d1d5db;
+  border-radius: 0.5rem;
+}
+
+input[type="text"]:hover,
+input[type="email"]:hover,
+input[type="password"]:hover,
+input[type="tel"]:hover,
+input[type="number"]:hover,
+input[type="url"]:hover,
+select:hover,
+textarea:hover {
+  border-color: #9ca3af;
 }
 
 select {
@@ -81,12 +104,43 @@ select {
   background-repeat: no-repeat;
   background-size: 1.25rem 1.25rem;
   padding-right: 2.5rem;
+  /* Explicit complete border on all four sides */
+  border: 2px solid #d1d5db !important;
+  border-bottom: 2px solid #d1d5db !important;
+  border-radius: 0.5rem !important;
+  box-sizing: border-box !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
+/* Force bottom border visibility on focused/open state */
+select:focus,
+select:active,
+select[size] {
+  border-bottom: 2px solid #d1d5db !important;
+}
+
+/* Style select option elements for better visibility */
+select option {
+  padding: 0.75rem 1rem;
+  background-color: white;
+  color: #1f2937;
+}
+
+select option:hover,
+select option:focus {
+  background-color: #f3f4f6;
+}
+
+select option:checked {
+  background-color: #3b82f6;
+  color: white;
 }
 
 input[disabled],
 select[disabled],
 textarea[disabled] {
-  @apply bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200;
+  @apply bg-gray-100 text-gray-500 cursor-not-allowed;
+  border: 2px solid #e5e7eb !important;
 }
 
 /* Label styling */

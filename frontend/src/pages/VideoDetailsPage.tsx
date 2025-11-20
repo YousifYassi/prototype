@@ -10,7 +10,10 @@ import {
   Download,
   Calendar,
   Activity,
-  Play
+  Play,
+  FolderOpen,
+  Building2,
+  Shield
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -260,6 +263,48 @@ export default function VideoDetailsPage() {
           </div>
         </div>
       </div>
+
+      {/* Project Information */}
+      {video.project && (
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <FolderOpen className="h-5 w-5 mr-2 text-gray-600" />
+            Associated Project
+          </h2>
+          <div className="flex items-start justify-between">
+            <div className="space-y-3 flex-1">
+              <div>
+                <p className="text-sm text-gray-600">Project Name</p>
+                <p className="font-semibold text-gray-900 text-lg">{video.project.name}</p>
+              </div>
+              {video.project.jurisdiction && (
+                <div className="flex items-center space-x-4">
+                  <div className="flex items-center text-sm text-gray-600">
+                    <Shield className="h-4 w-4 mr-1 text-blue-600" />
+                    <span className="font-medium">{video.project.jurisdiction.name}</span>
+                  </div>
+                  {video.project.industry && (
+                    <>
+                      <span className="text-gray-400">•</span>
+                      <div className="flex items-center text-sm text-gray-600">
+                        <Building2 className="h-4 w-4 mr-1 text-green-600" />
+                        <span className="font-medium">{video.project.industry.name}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => navigate(`/projects/${video.project.id}`)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center"
+            >
+              View Project
+              <ArrowLeft className="h-4 w-4 ml-2 rotate-180" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Unsafe Actions Detected */}
       {video.status === 'unsafe_detected' && unsafeActions.length > 0 && (

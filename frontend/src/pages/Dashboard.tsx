@@ -210,6 +210,9 @@ export default function Dashboard() {
                     Filename
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Project
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -230,6 +233,18 @@ export default function Dashboard() {
                           {video.filename}
                         </div>
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {video.project ? (
+                        <Link 
+                          to={`/projects/${video.project.id}`}
+                          className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          {video.project.name}
+                        </Link>
+                      ) : (
+                        <span className="text-sm text-gray-400 italic">None</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(video.status)}`}>

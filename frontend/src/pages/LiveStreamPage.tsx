@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, projectApi } from '../lib/api';
+import Select, { SelectOption } from '../components/Select';
 
 interface Stream {
   stream_id: string;
@@ -35,6 +36,7 @@ export default function LiveStreamPage() {
   const [streams, setStreams] = useState<Stream[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showCameraGuide, setShowCameraGuide] = useState(false);
   const [formData, setFormData] = useState<StreamFormData>({
     name: '',
     source_url: '',
@@ -50,6 +52,22 @@ export default function LiveStreamPage() {
     queryKey: ['projects'],
     queryFn: projectApi.list,
   });
+
+  const projectOptions: SelectOption[] = useMemo(() => 
+    projectsData?.projects.map((project: any) => ({
+      value: project.id,
+      label: project.name,
+      description: `${project.jurisdiction.name} - ${project.industry.name}`
+    })) || [],
+    [projectsData]
+  );
+
+  const sourceTypeOptions: SelectOption[] = [
+    { value: 'rtsp', label: 'RTSP Camera', description: 'IP cameras with RTSP protocol' },
+    { value: 'rtmp', label: 'RTMP Stream', description: 'Real-Time Messaging Protocol' },
+    { value: 'http', label: 'HTTP Stream', description: 'HTTP/MJPEG stream' },
+    { value: 'webcam', label: 'Webcam', description: 'Local USB webcam' },
+  ];
 
   useEffect(() => {
     loadStreams();
@@ -192,21 +210,12 @@ export default function LiveStreamPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Source Type
               </label>
-              <select
+              <Select
                 value={formData.source_type}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    source_type: e.target.value as StreamFormData['source_type'],
-                  })
-                }
-                className="input"
-              >
-                <option value="rtsp">RTSP Camera</option>
-                <option value="rtmp">RTMP Stream</option>
-                <option value="http">HTTP Stream</option>
-                <option value="webcam">Webcam</option>
-              </select>
+                onChange={(value) => setFormData({ ...formData, source_type: value as StreamFormData['source_type'] })}
+                options={sourceTypeOptions}
+                placeholder="Select source type"
+              />
             </div>
 
             <div>
@@ -242,21 +251,12 @@ export default function LiveStreamPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Project *
               </label>
-              <select
+              <Select
                 value={formData.project_id || ''}
-                onChange={(e) =>
-                  setFormData({ ...formData, project_id: e.target.value ? parseInt(e.target.value) : null })
-                }
-                className="input"
-                required
-              >
-                <option value="">Select a project</option>
-                {projectsData?.projects.map((project: any) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name} ({project.jurisdiction.name} - {project.industry.name})
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setFormData({ ...formData, project_id: value ? Number(value) : null })}
+                options={projectOptions}
+                placeholder="Select a project"
+              />
               <p className="text-xs text-gray-500 mt-1">
                 Streams must be associated with a project for jurisdiction-specific monitoring
               </p>
@@ -311,13 +311,309 @@ export default function LiveStreamPage() {
           <li>• <strong>Professional:</strong> Hikvision DS-2CD2XXX or Axis M-Series</li>
           <li>• <strong>Industrial:</strong> Dahua IPC-HFW or Bosch FLEXIDOME</li>
         </ul>
-        <a
-          href="#camera-guide"
-          className="text-sm text-blue-600 hover:text-blue-700 font-medium mt-2 inline-block"
+        <button
+          onClick={() => setShowCameraGuide(true)}
+          className="text-sm text-blue-600 hover:text-blue-700 font-medium mt-2 inline-block underline"
         >
           View detailed camera recommendations →
-        </a>
+        </button>
       </div>
+
+      {/* Camera Guide Modal */}
+      {showCameraGuide && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center p-6 border-b border-gray-200">
+              <h2 className="text-2xl font-bold text-gray-900">
+                📹 Camera Setup Guide
+              </h2>
+              <button
+                onClick={() => setShowCameraGuide(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="overflow-y-auto p-6 space-y-6">
+              {/* Requirements Section */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                  Minimum Requirements
+                </h3>
+                <ul className="space-y-2 text-sm text-gray-700">
+                  <li className="flex items-start">
+                    <span className="text-blue-600 mr-2">•</span>
+                    <span><strong>Resolution:</strong> 1920x1080 (1080p) or higher</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-blue-600 mr-2">•</span>
+                    <span><strong>Frame Rate:</strong> 15-30 FPS minimum</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-blue-600 mr-2">•</span>
+                    <span><strong>Protocols:</strong> RTSP, RTMP, or HTTP streaming support</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-blue-600 mr-2">•</span>
+                    <span><strong>Network:</strong> Ethernet (preferred) or WiFi with stable connection</span>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Budget-Friendly Options */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                  Budget-Friendly Options
+                </h3>
+                <div className="space-y-4">
+                  <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                    <div className="mb-2">
+                      <h4 className="font-semibold text-gray-900">Wyze Cam v3</h4>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">
+                      <strong>Resolution:</strong> 1080p @ 20 FPS | <strong>Protocol:</strong> RTSP (requires firmware)
+                    </p>
+                    <p className="text-sm text-gray-700 mb-2">
+                      ✓ Affordable, good image quality, easy setup
+                    </p>
+                    <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded font-mono">
+                      rtsp://username:password@camera-ip/live
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      Best for: Small businesses, testing, single location
+                    </p>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                    <div className="mb-2">
+                      <h4 className="font-semibold text-gray-900">Reolink E1 Pro</h4>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">
+                      <strong>Resolution:</strong> 2560x1440 @ 25 FPS | <strong>Protocol:</strong> RTSP native
+                    </p>
+                    <p className="text-sm text-gray-700 mb-2">
+                      ✓ Good value, pan/tilt, native RTSP support
+                    </p>
+                    <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded font-mono">
+                      rtsp://admin:password@camera-ip:554/h264Preview_01_main
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      Best for: Indoor monitoring, flexible positioning
+                    </p>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                    <div className="mb-2">
+                      <h4 className="font-semibold text-gray-900">TP-Link Tapo C200</h4>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">
+                      <strong>Resolution:</strong> 1080p @ 15 FPS | <strong>Protocol:</strong> RTSP (via ONVIF)
+                    </p>
+                    <p className="text-sm text-gray-700 mb-2">
+                      ✓ Pan/tilt, motion tracking, affordable
+                    </p>
+                    <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded font-mono">
+                      rtsp://username:password@camera-ip:554/stream1
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      Best for: General purpose indoor monitoring
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Professional Options */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                  Professional Options
+                </h3>
+                <div className="space-y-4">
+                  <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors bg-blue-50 border-blue-200">
+                    <div className="mb-2">
+                      <h4 className="font-semibold text-gray-900">Hikvision DS-2CD2043G2-I</h4>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">
+                      <strong>Resolution:</strong> 4MP @ 30 FPS | <strong>Protocol:</strong> RTSP, ONVIF
+                    </p>
+                    <p className="text-sm text-gray-700 mb-2">
+                      ✓ Excellent image quality, PoE, weatherproof, professional grade
+                    </p>
+                    <p className="text-xs text-gray-500 bg-white p-2 rounded font-mono">
+                      rtsp://admin:password@camera-ip:554/Streaming/Channels/101
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1 font-medium">
+                      ⭐ Recommended for: Professional installations, outdoor use
+                    </p>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                    <div className="mb-2">
+                      <h4 className="font-semibold text-gray-900">Dahua IPC-HFW2431S-S</h4>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">
+                      <strong>Resolution:</strong> 4MP @ 30 FPS | <strong>Protocol:</strong> RTSP, ONVIF
+                    </p>
+                    <p className="text-sm text-gray-700 mb-2">
+                      ✓ Good value, PoE, night vision, reliable
+                    </p>
+                    <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded font-mono">
+                      rtsp://admin:password@camera-ip:554/cam/realmonitor?channel=1&subtype=0
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      Best for: 24/7 monitoring, multiple locations
+                    </p>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                    <div className="mb-2">
+                      <h4 className="font-semibold text-gray-900">Axis M3045-V</h4>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">
+                      <strong>Resolution:</strong> 1080p @ 30 FPS | <strong>Protocol:</strong> RTSP, ONVIF
+                    </p>
+                    <p className="text-sm text-gray-700 mb-2">
+                      ✓ Enterprise quality, excellent low light, wide dynamic range
+                    </p>
+                    <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded font-mono">
+                      rtsp://root:password@camera-ip/axis-media/media.amp
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      Best for: Enterprise deployments, critical applications
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Industrial Options */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                  Industrial/Enterprise Options
+                </h3>
+                <div className="space-y-4">
+                  <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                    <div className="mb-2">
+                      <h4 className="font-semibold text-gray-900">Bosch FLEXIDOME IP 5000i</h4>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">
+                      <strong>Resolution:</strong> 5MP @ 30 FPS | <strong>Protocol:</strong> RTSP, ONVIF
+                    </p>
+                    <p className="text-sm text-gray-700 mb-2">
+                      ✓ Industrial grade, intelligent video analytics, vandal-resistant
+                    </p>
+                    <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded font-mono">
+                      rtsp://user:password@camera-ip/rtsp_tunnel
+                    </p>
+                    <p className="text-xs text-purple-600 mt-1">
+                      Best for: High-risk environments, critical infrastructure
+                    </p>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                    <div className="mb-2">
+                      <h4 className="font-semibold text-gray-900">Avigilon H4 Multisensor</h4>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">
+                      <strong>Resolution:</strong> 4x 3MP sensors | <strong>Protocol:</strong> RTSP, proprietary
+                    </p>
+                    <p className="text-sm text-gray-700 mb-2">
+                      ✓ 360° coverage, AI analytics, exceptional quality
+                    </p>
+                    <p className="text-xs text-purple-600 mt-1">
+                      Best for: Large facilities, comprehensive coverage
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Setup Tips */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  🔒 Security Best Practices
+                </h3>
+                <ul className="space-y-1 text-sm text-gray-700">
+                  <li>• Change default passwords immediately</li>
+                  <li>• Use strong, unique passwords (16+ characters)</li>
+                  <li>• Enable HTTPS for camera web interface</li>
+                  <li>• Update firmware regularly</li>
+                  <li>• Use VLANs to isolate cameras from main network</li>
+                  <li>• Never expose cameras directly to the internet</li>
+                </ul>
+              </div>
+
+              {/* Network Requirements */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  🌐 Network Requirements
+                </h3>
+                <ul className="space-y-1 text-sm text-gray-700">
+                  <li>• <strong>Bandwidth per camera:</strong> 2-8 Mbps (depending on resolution)</li>
+                  <li>• <strong>Recommended:</strong> Gigabit Ethernet switch</li>
+                  <li>• <strong>WiFi:</strong> 5GHz preferred, strong signal required</li>
+                  <li>• <strong>Latency:</strong> &lt;100ms recommended</li>
+                </ul>
+              </div>
+
+              {/* Common RTSP URLs */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                  Quick Reference: Common RTSP URL Formats
+                </h3>
+                <div className="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs font-mono space-y-2">
+                  <div>
+                    <div className="text-gray-400 mb-1"># Hikvision</div>
+                    <div>rtsp://admin:password@192.168.1.64:554/Streaming/Channels/101</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-400 mb-1"># Dahua</div>
+                    <div>rtsp://admin:password@192.168.1.108:554/cam/realmonitor?channel=1&subtype=0</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-400 mb-1"># Reolink</div>
+                    <div>rtsp://admin:password@192.168.1.100:554/h264Preview_01_main</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-400 mb-1"># Axis</div>
+                    <div>rtsp://root:password@192.168.1.90/axis-media/media.amp</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-400 mb-1"># TP-Link</div>
+                    <div>rtsp://admin:password@192.168.1.70:554/stream1</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-400 mb-1"># Generic ONVIF</div>
+                    <div>rtsp://admin:password@192.168.1.X:554/onvif1</div>
+                  </div>
+                </div>
+              </div>
+      </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-gray-200 p-4 bg-gray-50">
+              <button
+                onClick={() => setShowCameraGuide(false)}
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Active Streams */}
       {streams.length === 0 ? (
