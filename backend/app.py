@@ -461,6 +461,137 @@ async def update_alert_config(
     }
 
 
+@app.post("/config/alerts/test-email")
+async def send_test_email(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Send a test email alert to verify configuration"""
+    alert_config = db.query(AlertConfig).filter(
+        AlertConfig.user_id == current_user.id
+    ).first()
+    
+    email_to = alert_config.email if alert_config else current_user.email
+    
+    if not email_to:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No email address configured"
+        )
+    
+    try:
+        from backend.notifications import send_email_notification
+        
+        # Send test email with clear test message
+        subject = "🧪 TEST ALERT - Workplace Safety Monitoring System"
+        
+        body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background-color: #3b82f6; color: white; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
+                <h1 style="margin: 0;">🧪 TEST ALERT</h1>
+                <p style="margin: 10px 0 0 0; font-size: 14px;">This is a test notification</p>
+            </div>
+            
+            <div style="background-color: #f3f4f6; padding: 20px; border-radius: 0 0 8px 8px;">
+                <div style="background-color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
+                    <h2 style="color: #1f2937; margin-top: 0;">✅ Your Email Alerts Are Working!</h2>
+                    <p style="color: #4b5563; line-height: 1.6;">
+                        This is a <strong>test message</strong> from your Workplace Safety Monitoring System. 
+                        <strong>No action is required.</strong>
+                    </p>
+                    <p style="color: #4b5563; line-height: 1.6;">
+                        If you receive this email, your alert configuration is working correctly and you will 
+                        receive notifications when unsafe actions are detected in your video streams.
+                    </p>
+                </div>
+                
+                <div style="background-color: #dbeafe; border-left: 4px solid #3b82f6; padding: 15px; border-radius: 4px;">
+                    <p style="color: #1e40af; margin: 0; font-size: 14px;">
+                        <strong>📧 Test Email Details:</strong>
+                    </p>
+                    <ul style="color: #1e40af; margin: 10px 0 0 0; font-size: 14px;">
+                        <li>Email Address: {email_to}</li>
+                        <li>Sent At: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}</li>
+                        <li>Configuration: Email alerts enabled</li>
+                    </ul>
+                </div>
+                
+                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #d1d5db; text-align: center;">
+                    <p style="color: #6b7280; font-size: 12px; margin: 0;">
+                        Workplace Safety Monitoring System<br>
+                        This is an automated test message. No response is required.
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        send_email_notification(
+            to_email=email_to,
+            subject=subject,
+            body=body
+        )
+        
+        return {
+            "message": "Test email sent successfully",
+            "email": email_to
+        }
+    
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send test email: {str(e)}"
+        )
+
+
+@app.post("/config/alerts/test-sms")
+async def send_test_sms(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Send a test SMS alert to verify configuration"""
+    alert_config = db.query(AlertConfig).filter(
+        AlertConfig.user_id == current_user.id
+    ).first()
+    
+    if not alert_config or not alert_config.phone:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No phone number configured"
+        )
+    
+    try:
+        from backend.notifications import send_sms_notification
+        
+        # Send test SMS with clear test message (ASCII-safe for Windows compatibility)
+        message = (
+            "*** TEST ALERT ***\n"
+            "Workplace Safety System\n\n"
+            "Your SMS alerts are working!\n\n"
+            "This is a TEST MESSAGE.\n"
+            "No action required.\n\n"
+            "You will receive real alerts when unsafe actions are detected."
+        )
+        
+        send_sms_notification(
+            to_phone=alert_config.phone,
+            message=message
+        )
+        
+        return {
+            "message": "Test SMS sent successfully",
+            "phone": alert_config.phone
+        }
+    
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send test SMS: {str(e)}"
+        )
+
+
 # ===== Jurisdiction & Industry Management =====
 
 @app.get("/jurisdictions")

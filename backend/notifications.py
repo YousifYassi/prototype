@@ -210,9 +210,9 @@ async def send_sms_alert(
     try:
         from datetime import datetime
         
-        # Create SMS message
+        # Create SMS message (ASCII-safe for Windows compatibility)
         message_body = f"""
-⚠️ WORKPLACE SAFETY ALERT ⚠️
+*** WORKPLACE SAFETY ALERT ***
 
 Unsafe Action: {action}
 Confidence: {confidence:.0%}
@@ -235,6 +235,57 @@ Please review immediately.
         
     except Exception as e:
         print(f"Error sending SMS alert: {e}")
+        return False
+
+
+def send_email_notification(to_email: str, subject: str, body: str) -> bool:
+    """
+    Synchronous wrapper to send a simple email notification
+    Used for test emails and simple notifications
+    """
+    import asyncio
+    
+    async def _send():
+        return await send_email_smtp(to_email, subject, body, body)
+    
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(_send())
+        loop.close()
+        return result
+    except Exception as e:
+        print(f"Error in send_email_notification: {e}")
+        return False
+
+
+def send_sms_notification(to_phone: str, message: str) -> bool:
+    """
+    Synchronous wrapper to send a simple SMS notification
+    Used for test SMS and simple notifications
+    """
+    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or not TWILIO_FROM_NUMBER:
+        print("Warning: Twilio credentials not configured. SMS not sent.")
+        # Encode message safely for printing to avoid charmap errors
+        safe_message = message.encode('ascii', 'replace').decode('ascii')
+        print(f"Would have sent SMS to {to_phone}: {safe_message}")
+        return False
+    
+    try:
+        client = TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        twilio_message = client.messages.create(
+            body=message,
+            from_=TWILIO_FROM_NUMBER,
+            to=to_phone
+        )
+        
+        print(f"SMS sent to {to_phone} (SID: {twilio_message.sid})")
+        return True
+        
+    except Exception as e:
+        # Safely encode error message for printing
+        error_str = str(e).encode('ascii', 'replace').decode('ascii')
+        print(f"Error sending SMS: {error_str}")
         return False
 
 

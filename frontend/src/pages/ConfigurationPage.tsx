@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
 import { alertConfigApi } from '../lib/api'
-import { Mail, MessageSquare, Save, Bell, CheckCircle, Shield } from 'lucide-react'
+import { Mail, MessageSquare, Save, Bell, CheckCircle, Shield, Send } from 'lucide-react'
 
 export default function ConfigurationPage() {
   const queryClient = useQueryClient()
@@ -35,6 +35,46 @@ export default function ConfigurationPage() {
       toast.error(error.response?.data?.detail || 'Failed to update configuration')
     },
   })
+
+  const testEmailMutation = useMutation({
+    mutationFn: alertConfigApi.sendTestEmail,
+    onSuccess: () => {
+      toast.success('Test email sent! Check your inbox.')
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.detail || 'Failed to send test email')
+    },
+  })
+
+  const testSmsMutation = useMutation({
+    mutationFn: alertConfigApi.sendTestSms,
+    onSuccess: () => {
+      toast.success('Test SMS sent! Check your phone.')
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.detail || 'Failed to send test SMS')
+    },
+  })
+
+  const handleTestEmail = () => {
+    if (!email) {
+      toast.error('Please enter an email address first')
+      return
+    }
+    testEmailMutation.mutate()
+  }
+
+  const handleTestSms = () => {
+    if (!phone) {
+      toast.error('Please enter a phone number first')
+      return
+    }
+    if (!phone.startsWith('+')) {
+      toast.error('Phone number must start with + and country code')
+      return
+    }
+    testSmsMutation.mutate()
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -113,6 +153,18 @@ export default function ConfigurationPage() {
               </p>
             </div>
 
+            {enableEmail && email && (
+              <button
+                type="button"
+                onClick={handleTestEmail}
+                disabled={testEmailMutation.isPending || !email}
+                className="btn-secondary flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Send className="h-4 w-4 mr-2" />
+                {testEmailMutation.isPending ? 'Sending...' : 'Send Test Email'}
+              </button>
+            )}
+
             {enableEmail && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <div className="flex items-start space-x-2">
@@ -168,6 +220,18 @@ export default function ConfigurationPage() {
                 Include country code (e.g., +1 for US, +44 for UK)
               </p>
             </div>
+
+            {enableSms && (
+              <button
+                type="button"
+                onClick={handleTestSms}
+                disabled={testSmsMutation.isPending || !phone || !phone.trim()}
+                className="btn-secondary flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Send className="h-4 w-4 mr-2" />
+                {testSmsMutation.isPending ? 'Sending...' : 'Send Test SMS'}
+              </button>
+            )}
 
             {enableSms && (
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
