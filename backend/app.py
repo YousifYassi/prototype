@@ -1233,6 +1233,81 @@ async def get_video_status(
     }
 
 
+@app.put("/videos/{video_id}")
+async def update_video(
+    video_id: str,
+    project_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update video information (e.g., change project assignment)"""
+    # Verify video exists and belongs to user
+    video = db.query(VideoProcessing).filter(
+        VideoProcessing.id == video_id,
+        VideoProcessing.user_id == current_user.id
+    ).first()
+    
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    # If project_id is provided, verify it exists and belongs to user
+    if project_id is not None:
+        project = db.query(Project).filter(
+            Project.id == project_id,
+            Project.user_id == current_user.id
+        ).first()
+        
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+    
+    # Update video project assignment
+    video.project_id = project_id
+    db.commit()
+    db.refresh(video)
+    
+    # Return updated video data (same format as get_video_status)
+    result_data = json.loads(video.result) if video.result else {}
+    
+    # Get project information if associated
+    project_info = None
+    if video.project_id:
+        project = db.query(Project).filter(Project.id == video.project_id).first()
+        if project:
+            jurisdiction = db.query(Jurisdiction).filter(Jurisdiction.id == project.jurisdiction_id).first()
+            industry = db.query(Industry).filter(Industry.id == project.industry_id).first()
+            project_info = {
+                "id": project.id,
+                "name": project.name,
+                "jurisdiction": {
+                    "id": jurisdiction.id,
+                    "name": jurisdiction.name,
+                    "code": jurisdiction.code
+                } if jurisdiction else None,
+                "industry": {
+                    "id": industry.id,
+                    "name": industry.name,
+                    "code": industry.code
+                } if industry else None
+            }
+    
+    return {
+        "video_id": video.id,
+        "filename": video.filename,
+        "status": video.status,
+        "uploaded_at": video.uploaded_at.isoformat(),
+        "processed_at": video.processed_at.isoformat() if video.processed_at else None,
+        "result": result_data,
+        "filepath": video.filepath,
+        "project": project_info
+    }
+
+
 from fastapi.responses import FileResponse
 
 async def get_user_from_token(token: str, db: Session) -> User:

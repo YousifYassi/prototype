@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
-import { videoApi } from '../lib/api'
+import { videoApi, projectApi } from '../lib/api'
 import { 
   AlertTriangle, 
   CheckCircle, 
@@ -15,25 +15,69 @@ import {
   Building2,
   Shield
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { toast } from 'react-toastify'
+import Select, { SelectOption } from '../components/Select'
 
 export default function VideoDetailsPage() {
   const { videoId } = useParams<{ videoId: string }>()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [showVideo, setShowVideo] = useState(false)
 
   const { data: video, isLoading, error } = useQuery({
     queryKey: ['video', videoId],
     queryFn: () => videoApi.getStatus(videoId!),
     enabled: !!videoId,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
       // Auto-refresh if still processing
+      const data = query.state.data as any
       if (data?.status === 'processing' || data?.status === 'uploaded') {
         return 3000 // Refresh every 3 seconds
       }
       return false
     }
   })
+
+  // Fetch projects for project selector
+  const { data: projectsData } = useQuery({
+    queryKey: ['projects'],
+    queryFn: projectApi.list,
+  })
+
+  const projectOptions: SelectOption[] = useMemo(() => {
+    const options: SelectOption[] = [
+      { value: '', label: 'No project', description: 'Use default settings' }
+    ];
+    if (projectsData?.projects) {
+      const projectOpts = projectsData.projects.map((project: any) => ({
+        value: project.id,
+        label: project.name,
+        description: `${project.jurisdiction.name} - ${project.industry.name}`
+      }));
+      options.push(...projectOpts);
+    }
+    return options;
+  }, [projectsData]);
+
+  // Mutation for updating project assignment
+  const updateProjectMutation = useMutation({
+    mutationFn: ({ videoId, projectId }: { videoId: string; projectId: number | null }) =>
+      videoApi.updateProject(videoId, projectId),
+    onSuccess: () => {
+      toast.success('Project assignment updated successfully!')
+      queryClient.invalidateQueries({ queryKey: ['video', videoId] })
+      queryClient.invalidateQueries({ queryKey: ['videos'] })
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.detail || 'Failed to update project assignment')
+    },
+  })
+
+  const handleProjectChange = (newProjectId: string | number) => {
+    const projectId = newProjectId ? Number(newProjectId) : null
+    updateProjectMutation.mutate({ videoId: videoId!, projectId })
+  }
 
   const handleDownload = () => {
     if (!videoId) return
@@ -178,6 +222,7 @@ export default function VideoDetailsPage() {
           <div className="relative bg-gray-900 rounded-lg overflow-hidden">
             <video 
               controls 
+              autoPlay
               className="w-full aspect-video"
               src={videoApi.getStreamUrl(videoId!)}
             >
@@ -188,6 +233,55 @@ export default function VideoDetailsPage() {
         <p className="text-sm text-gray-500 mt-3">
           This is the original video file you uploaded. Detection results are shown below.
         </p>
+      </div>
+
+      {/* Project Assignment */}
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+          <FolderOpen className="h-5 w-5 mr-2 text-gray-600" />
+          Project Assignment
+        </h2>
+        <div className="space-y-3">
+          <div>
+            <label htmlFor="video-project" className="block text-sm font-medium text-gray-700 mb-2">
+              Assign to Project
+            </label>
+            <Select
+              value={video?.project?.id || ''}
+              onChange={handleProjectChange}
+              options={projectOptions}
+              placeholder="Select a project"
+              disabled={updateProjectMutation.isPending}
+            />
+            <p className="mt-2 text-xs text-gray-500">
+              Change the project assignment to apply different jurisdiction and industry-specific safety rules
+            </p>
+          </div>
+          {video?.project && (
+            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2 text-sm">
+                  <Shield className="h-4 w-4 text-blue-600" />
+                  <span className="font-medium text-blue-900">{video.project.jurisdiction?.name}</span>
+                  {video.project.industry && (
+                    <>
+                      <span className="text-blue-400">•</span>
+                      <Building2 className="h-4 w-4 text-blue-600" />
+                      <span className="font-medium text-blue-900">{video.project.industry.name}</span>
+                    </>
+                  )}
+                </div>
+                <button
+                  onClick={() => navigate(`/projects/${video.project.id}`)}
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs flex items-center"
+                >
+                  View Project
+                  <ArrowLeft className="h-3 w-3 ml-1 rotate-180" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Processing Status */}
@@ -264,47 +358,6 @@ export default function VideoDetailsPage() {
         </div>
       </div>
 
-      {/* Project Information */}
-      {video.project && (
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <FolderOpen className="h-5 w-5 mr-2 text-gray-600" />
-            Associated Project
-          </h2>
-          <div className="flex items-start justify-between">
-            <div className="space-y-3 flex-1">
-              <div>
-                <p className="text-sm text-gray-600">Project Name</p>
-                <p className="font-semibold text-gray-900 text-lg">{video.project.name}</p>
-              </div>
-              {video.project.jurisdiction && (
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center text-sm text-gray-600">
-                    <Shield className="h-4 w-4 mr-1 text-blue-600" />
-                    <span className="font-medium">{video.project.jurisdiction.name}</span>
-                  </div>
-                  {video.project.industry && (
-                    <>
-                      <span className="text-gray-400">•</span>
-                      <div className="flex items-center text-sm text-gray-600">
-                        <Building2 className="h-4 w-4 mr-1 text-green-600" />
-                        <span className="font-medium">{video.project.industry.name}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-            <button
-              onClick={() => navigate(`/projects/${video.project.id}`)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center"
-            >
-              View Project
-              <ArrowLeft className="h-4 w-4 ml-2 rotate-180" />
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Unsafe Actions Detected */}
       {video.status === 'unsafe_detected' && unsafeActions.length > 0 && (
