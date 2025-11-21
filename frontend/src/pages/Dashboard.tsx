@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { videoApi } from '../lib/api'
-import { AlertTriangle, CheckCircle, Clock, FileVideo, TrendingUp } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Clock, FileVideo, TrendingUp, Loader2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 export default function Dashboard() {
@@ -14,7 +14,6 @@ export default function Dashboard() {
     refetchInterval: 5000,
     refetchOnWindowFocus: true,
     staleTime: 0,
-    keepPreviousData: true,
   })
 
   const videos = videosData?.videos || []
@@ -68,15 +67,17 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
+      {/* Header with Loading Indicator */}
+      <div className="relative">
+        {isFetching && (
+          <div className="absolute top-1 right-0 flex items-center">
+            <Loader2 className="h-5 w-5 text-gray-400 animate-spin" />
+          </div>
+        )}
         <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
         <p className="mt-2 text-gray-600">
           Monitor your workplace safety video analysis
         </p>
-        {isFetching && (
-          <p className="mt-1 text-sm text-blue-600">Refreshing latest video statuses…</p>
-        )}
       </div>
 
       {/* Stats */}
