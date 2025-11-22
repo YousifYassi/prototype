@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react'
 import { authApi } from '../lib/api'
 
 interface User {
@@ -20,10 +20,15 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const authCheckInProgress = useRef(false)
 
   useEffect(() => {
     // Check if user is logged in on mount
     const checkAuth = async () => {
+      // Prevent duplicate calls (React StrictMode double-invokes effects in dev)
+      if (authCheckInProgress.current) return
+      authCheckInProgress.current = true
+
       const token = localStorage.getItem('access_token')
       if (token) {
         try {

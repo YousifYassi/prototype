@@ -71,8 +71,8 @@ export default function LiveStreamPage() {
 
   useEffect(() => {
     loadStreams();
-    // Refresh stream list every 5 seconds
-    const interval = setInterval(loadStreams, 5000);
+    // Refresh stream list every 15 seconds (reduced from 5s since we're using MJPEG streams)
+    const interval = setInterval(loadStreams, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -384,6 +384,7 @@ export default function LiveStreamPage() {
                   <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
                     <div className="mb-2">
                       <h4 className="font-semibold text-gray-900">Wyze Cam v3</h4>
+                      <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">Requires Firmware Flash</span>
                     </div>
                     <p className="text-sm text-gray-600 mb-2">
                       <strong>Resolution:</strong> 1080p @ 20 FPS | <strong>Protocol:</strong> RTSP (requires firmware)
@@ -391,8 +392,25 @@ export default function LiveStreamPage() {
                     <p className="text-sm text-gray-700 mb-2">
                       ✓ Affordable, good image quality, easy setup
                     </p>
+                    
+                    {/* Setup Instructions */}
+                    <div className="bg-yellow-50 border border-yellow-200 rounded p-3 text-xs mb-2 space-y-2">
+                      <p className="font-semibold text-yellow-900">⚠️ Setup Required (Needs microSD card):</p>
+                      <ol className="list-decimal ml-4 space-y-1 text-yellow-900">
+                        <li>Download legacy RTSP firmware: <a href="https://download.wyzecam.com/firmware/rtsp/demo_v3_RTSP_4.61.0.1.zip" target="_blank" rel="noopener noreferrer" className="underline text-blue-600 hover:text-blue-800">Download here</a></li>
+                        <li>Extract demo_wcv3.bin to FAT32 formatted microSD card</li>
+                        <li>Power off camera, insert card, hold SETUP button, power on</li>
+                        <li>Hold 3-4 seconds until LED flashes purple, wait 5 min</li>
+                        <li>In Wyze app: Settings → Advanced → RTSP → Enable</li>
+                        <li>Set RTSP password and note camera IP address</li>
+                      </ol>
+                    </div>
+                    
                     <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded font-mono">
-                      rtsp://username:password@camera-ip/live
+                      rtsp://camera-ip/live
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Credentials: No username, use RTSP password from step 5
                     </p>
                     <p className="text-xs text-blue-600 mt-1">
                       Best for: Small businesses, testing, single location
@@ -402,6 +420,7 @@ export default function LiveStreamPage() {
                   <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
                     <div className="mb-2">
                       <h4 className="font-semibold text-gray-900">Reolink E1 Pro</h4>
+                      <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">RTSP Built-in</span>
                     </div>
                     <p className="text-sm text-gray-600 mb-2">
                       <strong>Resolution:</strong> 2560x1440 @ 25 FPS | <strong>Protocol:</strong> RTSP native
@@ -409,8 +428,24 @@ export default function LiveStreamPage() {
                     <p className="text-sm text-gray-700 mb-2">
                       ✓ Good value, pan/tilt, native RTSP support
                     </p>
+                    
+                    {/* Setup Instructions */}
+                    <div className="bg-green-50 border border-green-200 rounded p-3 text-xs mb-2 space-y-2">
+                      <p className="font-semibold text-green-900">✓ Easy Setup:</p>
+                      <ol className="list-decimal ml-4 space-y-1 text-green-900">
+                        <li>Download Reolink app, scan QR code on camera</li>
+                        <li>Connect camera to WiFi and create admin password</li>
+                        <li>RTSP is enabled by default - no extra config needed</li>
+                        <li>Find IP: App → Device Settings → Device Info</li>
+                        <li>Use credentials: admin / your_password</li>
+                      </ol>
+                    </div>
+                    
                     <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded font-mono">
                       rtsp://admin:password@camera-ip:554/h264Preview_01_main
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Credentials: admin / password from setup
                     </p>
                     <p className="text-xs text-blue-600 mt-1">
                       Best for: Indoor monitoring, flexible positioning
@@ -420,6 +455,7 @@ export default function LiveStreamPage() {
                   <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
                     <div className="mb-2">
                       <h4 className="font-semibold text-gray-900">TP-Link Tapo C200</h4>
+                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">Enable RTSP Required</span>
                     </div>
                     <p className="text-sm text-gray-600 mb-2">
                       <strong>Resolution:</strong> 1080p @ 15 FPS | <strong>Protocol:</strong> RTSP (via ONVIF)
@@ -427,8 +463,25 @@ export default function LiveStreamPage() {
                     <p className="text-sm text-gray-700 mb-2">
                       ✓ Pan/tilt, motion tracking, affordable
                     </p>
+                    
+                    {/* Setup Instructions */}
+                    <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs mb-2 space-y-2">
+                      <p className="font-semibold text-blue-900">📱 Setup Steps:</p>
+                      <ol className="list-decimal ml-4 space-y-1 text-blue-900">
+                        <li>Download Tapo app, add camera to WiFi</li>
+                        <li>Create "Camera Account" password (different from cloud password)</li>
+                        <li>Enable RTSP: Settings → Advanced → Camera Account → Toggle ON</li>
+                        <li>Verify username is "admin" and password is set</li>
+                        <li>Find IP: Settings → Device Info → IP Address</li>
+                        <li>Test with VLC before adding to system</li>
+                      </ol>
+                    </div>
+                    
                     <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded font-mono">
-                      rtsp://username:password@camera-ip:554/stream1
+                      rtsp://admin:password@camera-ip:554/stream1
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Credentials: admin / camera account password
                     </p>
                     <p className="text-xs text-blue-600 mt-1">
                       Best for: General purpose indoor monitoring
@@ -446,6 +499,7 @@ export default function LiveStreamPage() {
                   <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors bg-blue-50 border-blue-200">
                     <div className="mb-2">
                       <h4 className="font-semibold text-gray-900">Hikvision DS-2CD2043G2-I</h4>
+                      <span className="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded">Requires SADP Tool</span>
                     </div>
                     <p className="text-sm text-gray-600 mb-2">
                       <strong>Resolution:</strong> 4MP @ 30 FPS | <strong>Protocol:</strong> RTSP, ONVIF
@@ -453,8 +507,25 @@ export default function LiveStreamPage() {
                     <p className="text-sm text-gray-700 mb-2">
                       ✓ Excellent image quality, PoE, weatherproof, professional grade
                     </p>
+                    
+                    {/* Setup Instructions */}
+                    <div className="bg-purple-50 border border-purple-200 rounded p-3 text-xs mb-2 space-y-2">
+                      <p className="font-semibold text-purple-900">🔧 Professional Setup:</p>
+                      <ol className="list-decimal ml-4 space-y-1 text-purple-900">
+                        <li>Download SADP tool from Hikvision website</li>
+                        <li>Connect camera to PoE switch, wait 2-3 minutes</li>
+                        <li>Run SADP, find camera (status: INACTIVE)</li>
+                        <li>Click Activate, create password (uppercase + lowercase + numbers)</li>
+                        <li>Access web interface at http://camera-ip with admin/password</li>
+                        <li>RTSP is enabled by default on port 554</li>
+                      </ol>
+                    </div>
+                    
                     <p className="text-xs text-gray-500 bg-white p-2 rounded font-mono">
                       rtsp://admin:password@camera-ip:554/Streaming/Channels/101
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Main stream (101) = high quality, Sub stream (102) = low quality
                     </p>
                     <p className="text-xs text-blue-600 mt-1 font-medium">
                       ⭐ Recommended for: Professional installations, outdoor use
@@ -464,6 +535,7 @@ export default function LiveStreamPage() {
                   <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
                     <div className="mb-2">
                       <h4 className="font-semibold text-gray-900">Dahua IPC-HFW2431S-S</h4>
+                      <span className="text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded">ConfigTool Setup</span>
                     </div>
                     <p className="text-sm text-gray-600 mb-2">
                       <strong>Resolution:</strong> 4MP @ 30 FPS | <strong>Protocol:</strong> RTSP, ONVIF
@@ -471,8 +543,25 @@ export default function LiveStreamPage() {
                     <p className="text-sm text-gray-700 mb-2">
                       ✓ Good value, PoE, night vision, reliable
                     </p>
+                    
+                    {/* Setup Instructions */}
+                    <div className="bg-indigo-50 border border-indigo-200 rounded p-3 text-xs mb-2 space-y-2">
+                      <p className="font-semibold text-indigo-900">🔧 Setup:</p>
+                      <ol className="list-decimal ml-4 space-y-1 text-indigo-900">
+                        <li>Download ConfigTool from Dahua website</li>
+                        <li>Connect camera to PoE, run ConfigTool → Search</li>
+                        <li>Access http://camera-ip, try admin/admin</li>
+                        <li>If blank password, create strong password on first login</li>
+                        <li>RTSP enabled by default on port 554</li>
+                        <li>Change default password immediately!</li>
+                      </ol>
+                    </div>
+                    
                     <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded font-mono">
                       rtsp://admin:password@camera-ip:554/cam/realmonitor?channel=1&subtype=0
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      subtype=0 (main stream), subtype=1 (sub stream)
                     </p>
                     <p className="text-xs text-blue-600 mt-1">
                       Best for: 24/7 monitoring, multiple locations
@@ -482,6 +571,7 @@ export default function LiveStreamPage() {
                   <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
                     <div className="mb-2">
                       <h4 className="font-semibold text-gray-900">Axis M3045-V</h4>
+                      <span className="text-xs bg-teal-100 text-teal-800 px-2 py-0.5 rounded">Enterprise Grade</span>
                     </div>
                     <p className="text-sm text-gray-600 mb-2">
                       <strong>Resolution:</strong> 1080p @ 30 FPS | <strong>Protocol:</strong> RTSP, ONVIF
@@ -489,8 +579,25 @@ export default function LiveStreamPage() {
                     <p className="text-sm text-gray-700 mb-2">
                       ✓ Enterprise quality, excellent low light, wide dynamic range
                     </p>
+                    
+                    {/* Setup Instructions */}
+                    <div className="bg-teal-50 border border-teal-200 rounded p-3 text-xs mb-2 space-y-2">
+                      <p className="font-semibold text-teal-900">🏢 Enterprise Setup:</p>
+                      <ol className="list-decimal ml-4 space-y-1 text-teal-900">
+                        <li>Download AXIS IP Utility or AXIS Device Manager</li>
+                        <li>Connect camera to PoE, discover in utility</li>
+                        <li>Access http://camera-ip, setup wizard starts</li>
+                        <li>Create root password (uppercase + lowercase + numbers)</li>
+                        <li>Best practice: Create "operator" user for RTSP (not root)</li>
+                        <li>RTSP works immediately after setup</li>
+                      </ol>
+                    </div>
+                    
                     <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded font-mono">
-                      rtsp://root:password@camera-ip/axis-media/media.amp
+                      rtsp://operator:password@camera-ip/axis-media/media.amp
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Use operator account (not root) for better security
                     </p>
                     <p className="text-xs text-blue-600 mt-1">
                       Best for: Enterprise deployments, critical applications
@@ -508,6 +615,7 @@ export default function LiveStreamPage() {
                   <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
                     <div className="mb-2">
                       <h4 className="font-semibold text-gray-900">Bosch FLEXIDOME IP 5000i</h4>
+                      <span className="text-xs bg-orange-100 text-orange-800 px-2 py-0.5 rounded">Password on Label</span>
                     </div>
                     <p className="text-sm text-gray-600 mb-2">
                       <strong>Resolution:</strong> 5MP @ 30 FPS | <strong>Protocol:</strong> RTSP, ONVIF
@@ -515,8 +623,25 @@ export default function LiveStreamPage() {
                     <p className="text-sm text-gray-700 mb-2">
                       ✓ Industrial grade, intelligent video analytics, vandal-resistant
                     </p>
+                    
+                    {/* Setup Instructions */}
+                    <div className="bg-orange-50 border border-orange-200 rounded p-3 text-xs mb-2 space-y-2">
+                      <p className="font-semibold text-orange-900">🏭 Industrial Setup:</p>
+                      <ol className="list-decimal ml-4 space-y-1 text-orange-900">
+                        <li>Find default password on camera label/sticker</li>
+                        <li>Download Bosch Configuration Manager</li>
+                        <li>Connect to PoE+, scan network in tool</li>
+                        <li>Access https://camera-ip (HTTPS default)</li>
+                        <li>Login: service/[password from label] or user/blank</li>
+                        <li>Change password immediately in Device → User Management</li>
+                      </ol>
+                    </div>
+                    
                     <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded font-mono">
-                      rtsp://user:password@camera-ip/rtsp_tunnel
+                      rtsp://user:password@camera-ip/rtsp_tunnel?inst=1
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Check camera label for default password
                     </p>
                     <p className="text-xs text-purple-600 mt-1">
                       Best for: High-risk environments, critical infrastructure
@@ -526,6 +651,7 @@ export default function LiveStreamPage() {
                   <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
                     <div className="mb-2">
                       <h4 className="font-semibold text-gray-900">Avigilon H4 Multisensor</h4>
+                      <span className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded">Requires ACC Software</span>
                     </div>
                     <p className="text-sm text-gray-600 mb-2">
                       <strong>Resolution:</strong> 4x 3MP sensors | <strong>Protocol:</strong> RTSP, proprietary
@@ -533,9 +659,65 @@ export default function LiveStreamPage() {
                     <p className="text-sm text-gray-700 mb-2">
                       ✓ 360° coverage, AI analytics, exceptional quality
                     </p>
+                    
+                    {/* Setup Instructions */}
+                    <div className="bg-red-50 border border-red-200 rounded p-3 text-xs mb-2 space-y-2">
+                      <p className="font-semibold text-red-900">🎯 Advanced Setup:</p>
+                      <ol className="list-decimal ml-4 space-y-1 text-red-900">
+                        <li>Download Avigilon Control Center (ACC) software</li>
+                        <li>Connect camera to PoE++, wait 3-5 minutes</li>
+                        <li>In ACC: Add Devices → Scan network</li>
+                        <li>Default: admin/admin, will force password change</li>
+                        <li>Each sensor has separate RTSP stream (4 streams total)</li>
+                        <li>Full features require ACC - RTSP is limited</li>
+                      </ol>
+                    </div>
+                    
+                    <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded font-mono">
+                      rtsp://admin:password@camera-ip/defaultPrimary?streamType=u
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Sensor 1-4: defaultPrimary, defaultPrimary2, defaultPrimary3, defaultPrimary4
+                    </p>
                     <p className="text-xs text-purple-600 mt-1">
                       Best for: Large facilities, comprehensive coverage
                     </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Finding Credentials */}
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  🔑 Finding Camera Credentials
+                </h3>
+                <div className="space-y-3 text-sm text-gray-700">
+                  <div>
+                    <h4 className="font-semibold text-gray-900 mb-1">Default Credentials:</h4>
+                    <ul className="space-y-1 ml-4">
+                      <li>• <strong>Wyze:</strong> No username, RTSP password (set in app)</li>
+                      <li>• <strong>Reolink:</strong> admin / (your password)</li>
+                      <li>• <strong>TP-Link:</strong> admin / camera account password</li>
+                      <li>• <strong>Hikvision:</strong> admin / (created on activation)</li>
+                      <li>• <strong>Dahua:</strong> admin / admin or (created on first login)</li>
+                      <li>• <strong>Axis:</strong> root / (created on first setup)</li>
+                      <li>• <strong>Bosch:</strong> service or user / (on camera label)</li>
+                      <li>• <strong>Avigilon:</strong> admin / admin (force change)</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-gray-900 mb-1">How to Find IP Address:</h4>
+                    <ul className="space-y-1 ml-4">
+                      <li>• Check camera's mobile app (Settings → Device Info)</li>
+                      <li>• Use manufacturer's discovery tool (SADP, ConfigTool, etc.)</li>
+                      <li>• Check your router's DHCP client list</li>
+                      <li>• Use network scanner (Advanced IP Scanner, Angry IP)</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-gray-900 mb-1">Testing RTSP Connection:</h4>
+                    <p className="ml-4">Use VLC Media Player: Media → Open Network Stream → Enter RTSP URL</p>
+                    <p className="text-xs text-gray-600 ml-4 mt-1">If video plays, your credentials and URL are correct!</p>
                   </div>
                 </div>
               </div>
@@ -676,25 +858,25 @@ function StreamCard({
   getStatusBadge,
   getSourceTypeLabel,
 }: StreamCardProps) {
-  const [frameData, setFrameData] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const videoRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (stream.status !== 'active') return;
-
-    // Poll for frames every 100ms
-    const interval = setInterval(async () => {
-      try {
-        const response = await api.get(`/streams/${stream.stream_id}/frame`);
-        setFrameData(response.data.frame);
-      } catch (err) {
-        console.error('Failed to fetch frame:', err);
-      }
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [stream.stream_id, stream.status]);
+  // Get auth token for MJPEG stream
+  const token = localStorage.getItem('token');
+  
+  // Construct MJPEG stream URL with auth token
+  // Add retry count to force image reload on retry
+  const streamUrl = stream.status === 'active' && !imageError
+    ? `http://localhost:8000/streams/${stream.stream_id}/video?token=${token}&t=${retryCount}`
+    : null;
+  
+  // Retry connection if image fails
+  const handleRetry = () => {
+    setImageError(false);
+    setRetryCount(prev => prev + 1);
+  };
 
   const toggleFullscreen = () => {
     if (!videoRef.current) return;
@@ -719,11 +901,15 @@ function StreamCard({
         className="relative bg-gray-900 aspect-video cursor-pointer"
         onClick={toggleFullscreen}
       >
-        {stream.status === 'active' && frameData ? (
+        {stream.status === 'active' && streamUrl && !imageError ? (
           <img
-            src={`data:image/jpeg;base64,${frameData}`}
+            src={streamUrl}
             alt={stream.name}
             className="w-full h-full object-contain"
+            onError={() => {
+              console.error('Failed to load MJPEG stream');
+              setImageError(true);
+            }}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-gray-400">
@@ -743,6 +929,32 @@ function StreamCard({
                   />
                 </svg>
                 <p>Stream Error</p>
+              </div>
+            ) : imageError ? (
+              <div className="text-center">
+                <svg
+                  className="w-12 h-12 mx-auto mb-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <p className="mb-3">Failed to connect to stream</p>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRetry();
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                >
+                  Retry Connection
+                </button>
               </div>
             ) : (
               <div className="text-center">

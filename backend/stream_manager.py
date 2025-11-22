@@ -8,6 +8,7 @@ import threading
 import time
 import base64
 import numpy as np
+import os
 from datetime import datetime
 from typing import Dict, Optional, List
 from dataclasses import dataclass, asdict
@@ -63,18 +64,54 @@ class VideoStream:
             # Open video capture
             if self.config.source_type == 'webcam':
                 source = int(self.config.source_url)
+                self.capture = cv2.VideoCapture(source)
             else:
                 source = self.config.source_url
-            
-            self.capture = cv2.VideoCapture(source)
-            
-            # Configure capture for RTSP streams
-            if self.config.source_type == 'rtsp':
-                self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce latency
-                self.capture.set(cv2.CAP_PROP_FPS, self.config.fps)
+                
+                # For RTSP streams, use FFmpeg backend with special options
+                if self.config.source_type == 'rtsp':
+                    logger.info(f"Opening RTSP stream with FFmpeg backend: {source}")
+                    
+                    # Set FFmpeg options for RTSP via environment variable
+                    # Use TCP transport (more reliable than UDP), set timeouts, and allow unauthorized connections
+                    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|max_delay;5000000|timeout;10000000"
+                    
+                    # Use FFmpeg backend explicitly
+                    self.capture = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
+                    
+                    # Configure buffer settings
+                    self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 3)
+                    
+                    # Try to open with retries (limited to avoid exhausting camera connection limit)
+                    max_retries = 1
+                    for attempt in range(max_retries):
+                        if self.capture.isOpened():
+                            logger.info(f"RTSP stream opened successfully on attempt {attempt + 1}")
+                            break
+                        if attempt < max_retries - 1:
+                            logger.warning(f"RTSP connection attempt {attempt + 1}/{max_retries} failed, retrying...")
+                            self.capture.release()
+                            time.sleep(2)
+                            self.capture = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
+                else:
+                    self.capture = cv2.VideoCapture(source)
             
             if not self.capture.isOpened():
-                raise Exception(f"Cannot open video source: {source}")
+                # CRITICAL: Release the capture object to free camera connection
+                if self.capture:
+                    self.capture.release()
+                    self.capture = None
+                
+                error_msg = f"Cannot open video source: {source}"
+                
+                # Check OpenCV build info
+                build_info = cv2.getBuildInformation()
+                if 'ffmpeg' not in build_info.lower() and 'gstreamer' not in build_info.lower():
+                    error_msg += " | OpenCV is not built with FFmpeg or GStreamer support. Install opencv-python-headless or opencv-contrib-python."
+                else:
+                    error_msg += " | Camera connection limit may be reached. Try rebooting the camera, or check IP/credentials/network."
+                
+                raise Exception(error_msg)
             
             # Update config with actual stream properties
             self.config.width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -91,6 +128,10 @@ class VideoStream:
             
         except Exception as e:
             logger.error(f"Failed to start stream {self.config.stream_id}: {e}")
+            # CRITICAL: Release capture on error to free camera connection
+            if self.capture:
+                self.capture.release()
+                self.capture = None
             self.config.status = 'error'
             self.config.error_message = str(e)
             return False
@@ -237,9 +278,13 @@ class StreamManager:
         stream = VideoStream(config, self.detector, self._handle_alert)
         success = stream.start()
         
+        # Add stream to manager even if it failed (so we can access error info)
+        self.streams[config.stream_id] = stream
+        
         if success:
-            self.streams[config.stream_id] = stream
-            logger.info(f"Added stream {config.stream_id}")
+            logger.info(f"Added and started stream {config.stream_id}")
+        else:
+            logger.error(f"Added stream {config.stream_id} but failed to start: {stream.config.error_message}")
         
         return success
     

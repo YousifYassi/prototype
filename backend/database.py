@@ -178,6 +178,7 @@ class Stream(Base):
     source_url = Column(String, nullable=False)
     source_type = Column(String, nullable=False)  # rtsp, rtmp, http, webcam
     status = Column(String, default="inactive")  # inactive, active, error
+    error_message = Column(Text, nullable=True)  # Error details if status is 'error'
     fps = Column(Integer, default=30)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

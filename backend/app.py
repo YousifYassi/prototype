@@ -6,6 +6,8 @@ import os
 import sys
 import json
 import asyncio
+import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
@@ -18,6 +20,10 @@ import yaml
 from sqlalchemy.orm import Session
 import jwt
 from passlib.context import CryptContext
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Add parent directory to path to import from models
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -61,6 +67,78 @@ with open("config.yaml", "r") as f:
 # Initialize detector (singleton)
 detector = None
 stream_manager = None
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize application on startup"""
+    from backend.database import SessionLocal
+    
+    # Reload active streams from database
+    db = SessionLocal()
+    try:
+        active_streams = db.query(StreamModel).filter(StreamModel.status == "active").all()
+        
+        if active_streams:
+            logger.info(f"Found {len(active_streams)} active streams to reload")
+            manager = get_stream_manager()
+            
+            for stream_db in active_streams:
+                try:
+                    logger.info(f"Attempting to restart stream {stream_db.id}: {stream_db.name} ({stream_db.source_url})")
+                    
+                    # Create stream configuration
+                    stream_config = StreamConfig(
+                        stream_id=stream_db.id,
+                        name=stream_db.name,
+                        source_url=stream_db.source_url,
+                        source_type=stream_db.source_type,
+                        status='inactive',
+                        fps=stream_db.fps,
+                        created_at=stream_db.created_at.isoformat()
+                    )
+                    
+                    # Start stream in manager (stream is added even if start fails)
+                    manager.add_stream(stream_config)
+                    
+                    # Always check the stream object for actual status
+                    stream_obj = manager.get_stream(stream_db.id)
+                    if stream_obj:
+                        if stream_obj.config.status == 'error':
+                            # Stream failed to start, update database with actual error
+                            stream_db.status = "error"
+                            stream_db.error_message = stream_obj.config.error_message or "Failed to connect to stream source"
+                            db.commit()
+                            logger.error(f"Stream {stream_db.id} failed to start: {stream_db.error_message}")
+                        elif stream_obj.config.status == 'active' and stream_obj.is_running:
+                            # Stream started successfully
+                            stream_db.status = "active"
+                            stream_db.error_message = None
+                            db.commit()
+                            logger.info(f"Successfully restarted stream {stream_db.id}: {stream_db.name}")
+                        else:
+                            # Stream exists but not running
+                            stream_db.status = "error"
+                            stream_db.error_message = "Stream not running"
+                            db.commit()
+                            logger.error(f"Stream {stream_db.id} not running")
+                    else:
+                        # Failed to add to manager
+                        stream_db.status = "error"
+                        stream_db.error_message = "Failed to add to stream manager"
+                        db.commit()
+                        logger.error(f"Failed to add stream {stream_db.id} to manager")
+                        
+                except Exception as e:
+                    logger.error(f"Error restarting stream {stream_db.id}: {e}")
+                    stream_db.status = "error"
+                    stream_db.error_message = str(e)
+                    db.commit()
+        else:
+            logger.info("No active streams to reload")
+    except Exception as e:
+        logger.error(f"Error reloading streams on startup: {e}")
+    finally:
+        db.close()
 
 def get_detector():
     global detector
@@ -1496,28 +1574,48 @@ async def create_stream(
         created_at=datetime.now().isoformat()
     )
     
-    # Add stream to manager
+    # Add stream to manager (stream is added even if start fails)
     manager = get_stream_manager()
-    success = manager.add_stream(stream_config)
+    manager.add_stream(stream_config)
     
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to start stream"
-        )
+    # Check stream status
+    stream_obj = manager.get_stream(stream_id)
+    actual_status = "active"
+    error_message = None
     
-    # Save stream to database
+    if stream_obj:
+        if stream_obj.config.status == 'error':
+            actual_status = "error"
+            error_message = stream_obj.config.error_message or "Failed to connect to stream source"
+        elif not stream_obj.is_running:
+            actual_status = "error"
+            error_message = "Stream not running"
+    else:
+        actual_status = "error"
+        error_message = "Failed to add to stream manager"
+    
+    # Save stream to database with actual status
     stream_db = StreamModel(
         id=stream_id,
         project_id=stream_data.project_id,
         name=stream_data.name,
         source_url=stream_data.source_url,
         source_type=stream_data.source_type,
-        status="active",
+        status=actual_status,
+        error_message=error_message,
         fps=stream_data.fps
     )
     db.add(stream_db)
     db.commit()
+    
+    if actual_status == "error":
+        return {
+            "stream_id": stream_id,
+            "name": stream_data.name,
+            "status": "error",
+            "error_message": error_message,
+            "message": f"Stream created but failed to connect: {error_message}"
+        }
     
     return {
         "stream_id": stream_id,
@@ -1529,50 +1627,201 @@ async def create_stream(
 
 @app.get("/streams")
 async def list_streams(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    """List all active streams"""
+    """List all streams from database with project information"""
+    # Query streams from database
+    streams = db.query(StreamModel).all()
+    
+    stream_list = []
     manager = get_stream_manager()
-    streams = manager.list_streams()
+    
+    for stream in streams:
+        # Get project information
+        project = db.query(Project).filter(Project.id == stream.project_id).first()
+        
+        # Get stream status from manager if available
+        stream_status = manager.get_stream(stream.id)
+        
+        stream_data = {
+            "stream_id": stream.id,
+            "name": stream.name,
+            "source_url": stream.source_url,
+            "source_type": stream.source_type,
+            "status": stream.status,
+            "fps": stream.fps,
+            "created_at": stream.created_at.isoformat(),
+            "updated_at": stream.updated_at.isoformat(),
+            # Default values for stream stats
+            "width": 0,
+            "height": 0,
+            "frame_count": 0,
+            "error_count": 0,
+            "last_frame_time": None,
+            "last_detection_time": None,
+            "current_result": None,
+            "error_message": stream.error_message  # Get error from database
+        }
+        
+        # Update with live status if stream is running in manager
+        if stream_status:
+            status_info = stream_status.get_status()
+            stream_data.update({
+                "status": status_info.get("status", stream.status),
+                "width": status_info.get("width", 0),
+                "height": status_info.get("height", 0),
+                "frame_count": status_info.get("frame_count", 0),
+                "error_count": status_info.get("error_count", 0),
+                "last_frame_time": status_info.get("last_frame_time"),
+                "last_detection_time": status_info.get("last_detection_time"),
+                "current_result": status_info.get("current_result"),
+                "error_message": status_info.get("error_message")
+            })
+        
+        # Add project info
+        if project:
+            stream_data["project"] = {
+                "id": project.id,
+                "name": project.name,
+                "jurisdiction": {
+                    "id": project.jurisdiction.id,
+                    "name": project.jurisdiction.name,
+                    "code": project.jurisdiction.code
+                },
+                "industry": {
+                    "id": project.industry.id,
+                    "name": project.industry.name,
+                    "code": project.industry.code
+                }
+            }
+        else:
+            stream_data["project"] = None
+        
+        stream_list.append(stream_data)
     
     return {
-        "streams": streams,
-        "total": len(streams)
+        "streams": stream_list,
+        "total": len(stream_list)
     }
 
 
 @app.get("/streams/{stream_id}")
 async def get_stream_status(
     stream_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Get status and details of a specific stream"""
-    manager = get_stream_manager()
-    stream = manager.get_stream(stream_id)
+    # Get stream from database
+    stream_db = db.query(StreamModel).filter(StreamModel.id == stream_id).first()
     
-    if not stream:
+    if not stream_db:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Stream not found"
         )
     
-    return stream.get_status()
+    # Verify the stream belongs to one of the user's projects
+    project = db.query(Project).filter(
+        Project.id == stream_db.project_id,
+        Project.user_id == current_user.id
+    ).first()
+    
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to access this stream"
+        )
+    
+    # Get stream from manager for live status
+    manager = get_stream_manager()
+    stream = manager.get_stream(stream_id)
+    
+    stream_data = {
+        "stream_id": stream_db.id,
+        "name": stream_db.name,
+        "source_url": stream_db.source_url,
+        "source_type": stream_db.source_type,
+        "status": stream_db.status,
+        "fps": stream_db.fps,
+        "created_at": stream_db.created_at.isoformat(),
+        "updated_at": stream_db.updated_at.isoformat(),
+        "width": 0,
+        "height": 0,
+        "frame_count": 0,
+        "error_count": 0,
+        "last_frame_time": None,
+        "last_detection_time": None,
+        "current_result": None,
+        "error_message": stream_db.error_message,  # Get error from database
+        "project": {
+            "id": project.id,
+            "name": project.name,
+            "jurisdiction": {
+                "id": project.jurisdiction.id,
+                "name": project.jurisdiction.name,
+                "code": project.jurisdiction.code
+            },
+            "industry": {
+                "id": project.industry.id,
+                "name": project.industry.name,
+                "code": project.industry.code
+            }
+        }
+    }
+    
+    # Update with live status if stream is running
+    if stream:
+        status_info = stream.get_status()
+        stream_data.update({
+            "status": status_info.get("status", stream_db.status),
+            "width": status_info.get("width", 0),
+            "height": status_info.get("height", 0),
+            "frame_count": status_info.get("frame_count", 0),
+            "error_count": status_info.get("error_count", 0),
+            "last_frame_time": status_info.get("last_frame_time"),
+            "last_detection_time": status_info.get("last_detection_time"),
+            "current_result": status_info.get("current_result"),
+            "error_message": status_info.get("error_message")
+        })
+    
+    return stream_data
 
 
 @app.delete("/streams/{stream_id}")
 async def delete_stream(
     stream_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Stop and remove a stream"""
+    # Remove from stream manager
     manager = get_stream_manager()
-    success = manager.remove_stream(stream_id)
+    manager.remove_stream(stream_id)  # It's OK if it's not in the manager
     
-    if not success:
+    # Remove from database
+    stream_db = db.query(StreamModel).filter(StreamModel.id == stream_id).first()
+    if not stream_db:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Stream not found"
         )
+    
+    # Verify the stream belongs to one of the user's projects
+    project = db.query(Project).filter(
+        Project.id == stream_db.project_id,
+        Project.user_id == current_user.id
+    ).first()
+    
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to delete this stream"
+        )
+    
+    db.delete(stream_db)
+    db.commit()
     
     return {
         "message": "Stream stopped and removed successfully"
@@ -1607,31 +1856,58 @@ async def get_stream_frame(
 from fastapi.responses import StreamingResponse
 
 @app.get("/streams/{stream_id}/video")
-async def stream_video(
+async def stream_live_video(
     stream_id: str,
-    current_user: User = Depends(get_current_user)
+    token: str,
+    db: Session = Depends(get_db)
 ):
     """
     Stream video as MJPEG (Motion JPEG) for continuous playback
     This provides a continuous video stream that can be displayed in an <img> tag
     """
-    manager = get_stream_manager()
-    stream = manager.get_stream(stream_id)
+    # Authenticate using token from query param (needed for img tag)
+    user = await get_user_from_token(token, db)
     
-    if not stream:
+    # Verify user has access to this stream
+    stream_db = db.query(StreamModel).filter(StreamModel.id == stream_id).first()
+    if not stream_db:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Stream not found"
         )
     
+    # Check if user owns the project this stream belongs to
+    project = db.query(Project).filter(
+        Project.id == stream_db.project_id,
+        Project.user_id == user.id
+    ).first()
+    
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied"
+        )
+    
+    manager = get_stream_manager()
+    stream = manager.get_stream(stream_id)
+    
+    if not stream or not stream.is_running:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stream not active or not found"
+        )
+    
     def generate():
         """Generate MJPEG stream"""
-        while stream.is_running:
-            frame_jpeg = stream.get_frame_jpeg()
-            if frame_jpeg is not None:
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + frame_jpeg + b'\r\n')
-            time.sleep(1.0 / stream.config.fps)
+        try:
+            while stream.is_running:
+                frame_jpeg = stream.get_frame_jpeg()
+                if frame_jpeg is not None:
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + frame_jpeg + b'\r\n')
+                time.sleep(1.0 / stream.config.fps)
+        except Exception as e:
+            logger.error(f"Error streaming video: {e}")
     
     return StreamingResponse(
         generate(),
