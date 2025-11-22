@@ -1,0 +1,3 @@
+label-studio>=1.10.0
+label-studio-converter>=0.0.54
+

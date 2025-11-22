@@ -1,0 +1,33 @@
+<View>
+  <Header value="Workplace Safety Video Annotation"/>
+  <Video name="video" value="$video" />
+  
+  <Header value="Action Classification"/>
+  <Choices name="action" toName="video" choice="multiple">
+    <Choice value="No PPE - Missing Helmet"/>
+    <Choice value="No PPE - Missing Vest"/>
+    <Choice value="No PPE - Missing Gloves"/>
+    <Choice value="No PPE - Missing Safety Glasses"/>
+    <Choice value="Unsafe Working at Height"/>
+    <Choice value="Improper Lifting Technique"/>
+    <Choice value="Unauthorized Area Access"/>
+    <Choice value="Equipment Misuse"/>
+    <Choice value="Slip/Trip/Fall Hazard"/>
+    <Choice value="Fire Safety Violation"/>
+    <Choice value="Electrical Safety Violation"/>
+    <Choice value="Chemical Handling Violation"/>
+    <Choice value="Safe Behavior"/>
+    <Choice value="Other Violation"/>
+  </Choices>
+  
+  <Header value="Severity Level"/>
+  <Rating name="severity" toName="video" maxRating="5" icon="star" size="medium"/>
+  
+  <Header value="Time-based Annotations (Optional)"/>
+  <VideoRectangle name="box" toName="video" />
+  
+  <Header value="Additional Notes"/>
+  <TextArea name="notes" toName="video" placeholder="Add any additional observations or context..." rows="3"/>
+  
+</View>
+
