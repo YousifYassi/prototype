@@ -6,6 +6,7 @@ import ConfigurationPage from './pages/ConfigurationPage'
 import VideoUploadPage from './pages/VideoUploadPage'
 import VideoDetailsPage from './pages/VideoDetailsPage'
 import LiveStreamPage from './pages/LiveStreamPage'
+import StreamDetailsPage from './pages/StreamDetailsPage'
 import ProjectListPage from './pages/ProjectListPage'
 import ProjectCreatePage from './pages/ProjectCreatePage'
 import ProjectDetailsPage from './pages/ProjectDetailsPage'
@@ -46,6 +47,7 @@ function App() {
             <Route path="upload" element={<VideoUploadPage />} />
             <Route path="video/:videoId" element={<VideoDetailsPage />} />
             <Route path="streams" element={<LiveStreamPage />} />
+            <Route path="streams/:streamId" element={<StreamDetailsPage />} />
             <Route path="projects" element={<ProjectListPage />} />
             <Route path="projects/new" element={<ProjectCreatePage />} />
             <Route path="projects/:projectId" element={<ProjectDetailsPage />} />

@@ -38,6 +38,7 @@ from backend.database import (
 from backend.notifications import send_email_alert, send_sms_alert
 from backend.stream_manager import StreamManager, StreamConfig, validate_stream_url
 from backend.model_registry import get_model_registry
+from backend.hls_manager import get_hls_manager
 
 # Initialize FastAPI app
 app = FastAPI(title="Workplace Safety Monitoring API", version="1.0.0")
@@ -47,8 +48,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React dev server
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
 # Security
@@ -73,72 +76,35 @@ async def startup_event():
     """Initialize application on startup"""
     from backend.database import SessionLocal
     
-    # Reload active streams from database
+    # Mark previously active streams as stopped (don't auto-restart to avoid connection issues)
     db = SessionLocal()
     try:
         active_streams = db.query(StreamModel).filter(StreamModel.status == "active").all()
         
         if active_streams:
-            logger.info(f"Found {len(active_streams)} active streams to reload")
-            manager = get_stream_manager()
+            logger.info(f"Found {len(active_streams)} previously active streams - marking as stopped")
             
             for stream_db in active_streams:
-                try:
-                    logger.info(f"Attempting to restart stream {stream_db.id}: {stream_db.name} ({stream_db.source_url})")
-                    
-                    # Create stream configuration
-                    stream_config = StreamConfig(
-                        stream_id=stream_db.id,
-                        name=stream_db.name,
-                        source_url=stream_db.source_url,
-                        source_type=stream_db.source_type,
-                        status='inactive',
-                        fps=stream_db.fps,
-                        created_at=stream_db.created_at.isoformat()
-                    )
-                    
-                    # Start stream in manager (stream is added even if start fails)
-                    manager.add_stream(stream_config)
-                    
-                    # Always check the stream object for actual status
-                    stream_obj = manager.get_stream(stream_db.id)
-                    if stream_obj:
-                        if stream_obj.config.status == 'error':
-                            # Stream failed to start, update database with actual error
-                            stream_db.status = "error"
-                            stream_db.error_message = stream_obj.config.error_message or "Failed to connect to stream source"
-                            db.commit()
-                            logger.error(f"Stream {stream_db.id} failed to start: {stream_db.error_message}")
-                        elif stream_obj.config.status == 'active' and stream_obj.is_running:
-                            # Stream started successfully
-                            stream_db.status = "active"
-                            stream_db.error_message = None
-                            db.commit()
-                            logger.info(f"Successfully restarted stream {stream_db.id}: {stream_db.name}")
-                        else:
-                            # Stream exists but not running
-                            stream_db.status = "error"
-                            stream_db.error_message = "Stream not running"
-                            db.commit()
-                            logger.error(f"Stream {stream_db.id} not running")
-                    else:
-                        # Failed to add to manager
-                        stream_db.status = "error"
-                        stream_db.error_message = "Failed to add to stream manager"
-                        db.commit()
-                        logger.error(f"Failed to add stream {stream_db.id} to manager")
-                        
-                except Exception as e:
-                    logger.error(f"Error restarting stream {stream_db.id}: {e}")
-                    stream_db.status = "error"
-                    stream_db.error_message = str(e)
-                    db.commit()
+                # Mark as stopped instead of trying to restart
+                stream_db.status = "stopped"
+                stream_db.error_message = "Stream was stopped when server restarted"
+                logger.info(f"Marked stream {stream_db.id} ({stream_db.name}) as stopped")
+            
+            db.commit()
         else:
-            logger.info("No active streams to reload")
+            logger.info("No previously active streams found")
     except Exception as e:
         logger.error(f"Error reloading streams on startup: {e}")
     finally:
         db.close()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on application shutdown"""
+    logger.info("Shutting down - cleaning up HLS streams")
+    hls_manager = get_hls_manager()
+    hls_manager.cleanup_all()
 
 def get_detector():
     global detector
@@ -257,6 +223,12 @@ class StreamCreate(BaseModel):
         if v < 1 or v > 60:
             raise ValueError('fps must be between 1 and 60')
         return v
+
+
+class StreamUpdate(BaseModel):
+    name: Optional[str] = None
+    project_id: Optional[int] = None
+    source_url: Optional[str] = None
 
 
 class ProjectCreate(BaseModel):
@@ -1537,7 +1509,7 @@ async def create_stream(
     db: Session = Depends(get_db)
 ):
     """
-    Create and start a new live video stream
+    Create a new live video stream configuration (does not auto-start)
     Supports RTSP, RTMP, HTTP streams, and webcams
     """
     # Validate project exists and belongs to user
@@ -1563,65 +1535,25 @@ async def create_stream(
     import uuid
     stream_id = str(uuid.uuid4())
     
-    # Create stream configuration
-    stream_config = StreamConfig(
-        stream_id=stream_id,
-        name=stream_data.name,
-        source_url=stream_data.source_url,
-        source_type=stream_data.source_type,
-        status='inactive',
-        fps=stream_data.fps,
-        created_at=datetime.now().isoformat()
-    )
-    
-    # Add stream to manager (stream is added even if start fails)
-    manager = get_stream_manager()
-    manager.add_stream(stream_config)
-    
-    # Check stream status
-    stream_obj = manager.get_stream(stream_id)
-    actual_status = "active"
-    error_message = None
-    
-    if stream_obj:
-        if stream_obj.config.status == 'error':
-            actual_status = "error"
-            error_message = stream_obj.config.error_message or "Failed to connect to stream source"
-        elif not stream_obj.is_running:
-            actual_status = "error"
-            error_message = "Stream not running"
-    else:
-        actual_status = "error"
-        error_message = "Failed to add to stream manager"
-    
-    # Save stream to database with actual status
+    # Save stream to database with inactive status (not started yet)
     stream_db = StreamModel(
         id=stream_id,
         project_id=stream_data.project_id,
         name=stream_data.name,
         source_url=stream_data.source_url,
         source_type=stream_data.source_type,
-        status=actual_status,
-        error_message=error_message,
+        status="inactive",
+        error_message=None,
         fps=stream_data.fps
     )
     db.add(stream_db)
     db.commit()
     
-    if actual_status == "error":
-        return {
-            "stream_id": stream_id,
-            "name": stream_data.name,
-            "status": "error",
-            "error_message": error_message,
-            "message": f"Stream created but failed to connect: {error_message}"
-        }
-    
     return {
         "stream_id": stream_id,
         "name": stream_data.name,
-        "status": "active",
-        "message": "Stream started successfully"
+        "status": "inactive",
+        "message": "Stream created successfully. Use the start endpoint to begin streaming."
     }
 
 
@@ -1828,6 +1760,248 @@ async def delete_stream(
     }
 
 
+@app.patch("/streams/{stream_id}")
+async def update_stream(
+    stream_id: str,
+    stream_data: StreamUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update stream properties (name, project assignment)
+    Stream must be stopped to change project
+    """
+    # Get stream from database
+    stream_db = db.query(StreamModel).filter(StreamModel.id == stream_id).first()
+    
+    if not stream_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stream not found"
+        )
+    
+    # Verify the stream belongs to one of the user's projects
+    current_project = db.query(Project).filter(
+        Project.id == stream_db.project_id,
+        Project.user_id == current_user.id
+    ).first()
+    
+    if not current_project:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to update this stream"
+        )
+    
+    # Check if stream is active - must be stopped to update source URL
+    if stream_data.source_url is not None and stream_db.status == "active":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Stream must be stopped before changing source URL"
+        )
+    
+    # Update name if provided
+    if stream_data.name is not None:
+        stream_db.name = stream_data.name
+    
+    # Update source URL if provided
+    if stream_data.source_url is not None:
+        # Validate the new URL
+        if not validate_stream_url(stream_data.source_url, stream_db.source_type):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid {stream_db.source_type} URL format"
+            )
+        stream_db.source_url = stream_data.source_url
+        # Clear any previous error message when URL is updated
+        stream_db.error_message = None
+    
+    # Update project if provided
+    if stream_data.project_id is not None:
+        # Verify new project exists and belongs to user
+        new_project = db.query(Project).filter(
+            Project.id == stream_data.project_id,
+            Project.user_id == current_user.id
+        ).first()
+        
+        if not new_project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="New project not found"
+            )
+        
+        stream_db.project_id = stream_data.project_id
+    
+    db.commit()
+    db.refresh(stream_db)
+    
+    return {
+        "stream_id": stream_id,
+        "name": stream_db.name,
+        "project_id": stream_db.project_id,
+        "source_url": stream_db.source_url,
+        "message": "Stream updated successfully"
+    }
+
+
+@app.post("/streams/{stream_id}/start")
+async def start_stream(
+    stream_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Start a stream that was created but not started, or restart a stopped stream
+    """
+    # Get stream from database
+    stream_db = db.query(StreamModel).filter(StreamModel.id == stream_id).first()
+    
+    if not stream_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stream not found"
+        )
+    
+    # Verify the stream belongs to one of the user's projects
+    project = db.query(Project).filter(
+        Project.id == stream_db.project_id,
+        Project.user_id == current_user.id
+    ).first()
+    
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to start this stream"
+        )
+    
+    # Check if stream is already active
+    manager = get_stream_manager()
+    existing_stream = manager.get_stream(stream_id)
+    
+    if existing_stream and existing_stream.is_running:
+        return {
+            "stream_id": stream_id,
+            "status": "active",
+            "message": "Stream is already running"
+        }
+    
+    # Create stream configuration
+    stream_config = StreamConfig(
+        stream_id=stream_id,
+        name=stream_db.name,
+        source_url=stream_db.source_url,
+        source_type=stream_db.source_type,
+        status='inactive',
+        fps=stream_db.fps,
+        created_at=stream_db.created_at.isoformat()
+    )
+    
+    # Add stream to manager and start it (for AI detection)
+    manager.add_stream(stream_config)
+    
+    # Also start HLS transcoding for browser viewing
+    hls_manager = get_hls_manager()
+    hls_started, hls_error = hls_manager.start_hls_stream(
+        stream_id=stream_id,
+        source_url=stream_db.source_url,
+        source_type=stream_db.source_type
+    )
+    
+    # Check if stream started successfully
+    stream_obj = manager.get_stream(stream_id)
+    actual_status = "active"
+    error_message = None
+    
+    if stream_obj:
+        if stream_obj.config.status == 'error':
+            actual_status = "error"
+            error_message = stream_obj.config.error_message or "Failed to connect to stream source"
+        elif not stream_obj.is_running:
+            actual_status = "error"
+            error_message = "Stream not running"
+    else:
+        actual_status = "error"
+        error_message = "Failed to add to stream manager"
+    
+    if not hls_started:
+        actual_status = "error"
+        error_message = hls_error or "Failed to start HLS transcoding"
+        logger.error(f"HLS transcoding failed for stream {stream_id}: {hls_error}")
+    
+    # Update database status
+    stream_db.status = actual_status
+    stream_db.error_message = error_message
+    db.commit()
+    
+    if actual_status == "error":
+        # Clean up on error
+        if hls_started:
+            hls_manager.stop_hls_stream(stream_id)
+        return {
+            "stream_id": stream_id,
+            "status": "error",
+            "error_message": error_message,
+            "message": f"Failed to start stream: {error_message}"
+        }
+    
+    logger.info(f"Stream {stream_id} started successfully (AI detection + HLS streaming)")
+    return {
+        "stream_id": stream_id,
+        "status": "active",
+        "message": "Stream started successfully"
+    }
+
+
+@app.post("/streams/{stream_id}/stop")
+async def stop_stream(
+    stream_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Stop a running stream without deleting it from the database
+    """
+    # Get stream from database
+    stream_db = db.query(StreamModel).filter(StreamModel.id == stream_id).first()
+    
+    if not stream_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stream not found"
+        )
+    
+    # Verify the stream belongs to one of the user's projects
+    project = db.query(Project).filter(
+        Project.id == stream_db.project_id,
+        Project.user_id == current_user.id
+    ).first()
+    
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to stop this stream"
+        )
+    
+    # Remove from stream manager
+    manager = get_stream_manager()
+    manager.remove_stream(stream_id)
+    
+    # Also stop HLS transcoding
+    hls_manager = get_hls_manager()
+    hls_manager.stop_hls_stream(stream_id)
+    
+    # Update database status to stopped
+    stream_db.status = "stopped"
+    stream_db.error_message = None
+    db.commit()
+    
+    logger.info(f"Stopped stream {stream_id} (AI detection + HLS streaming)")
+    return {
+        "stream_id": stream_id,
+        "status": "stopped",
+        "message": "Stream stopped successfully"
+    }
+
+
 @app.get("/streams/{stream_id}/frame")
 async def get_stream_frame(
     stream_id: str,
@@ -1853,7 +2027,13 @@ async def get_stream_frame(
     }
 
 
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response, FileResponse
+import subprocess
+import queue
+import tempfile
+import shutil
+from pathlib import Path
+import threading
 
 @app.get("/streams/{stream_id}/video")
 async def stream_live_video(
@@ -1912,6 +2092,188 @@ async def stream_live_video(
     return StreamingResponse(
         generate(),
         media_type='multipart/x-mixed-replace; boundary=frame'
+    )
+
+
+@app.options("/streams/{stream_id}/hls/stream.m3u8")
+async def options_hls_playlist(stream_id: str):
+    """Handle CORS preflight for HLS playlist"""
+    return Response(
+        headers={
+            'Access-Control-Allow-Origin': 'http://localhost:3000',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+            'Access-Control-Allow-Credentials': 'true',
+            'Access-Control-Max-Age': '3600',
+        }
+    )
+
+
+@app.get("/streams/{stream_id}/hls/stream.m3u8")
+async def get_hls_playlist(
+    stream_id: str,
+    token: Optional[str] = None,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """
+    Serve HLS playlist file (.m3u8) for a stream
+    Supports both Authorization header and token query parameter
+    """
+    # Try to get user from either token or authorization header
+    user = None
+    if credentials:
+        try:
+            user = await get_current_user(credentials, db)
+        except:
+            pass
+    
+    if not user and token:
+        try:
+            user = await get_user_from_token(token, db)
+        except:
+            pass
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
+    
+    # Verify user has access to this stream
+    stream_db = db.query(StreamModel).filter(StreamModel.id == stream_id).first()
+    if not stream_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stream not found"
+        )
+    
+    # Check if user owns the project this stream belongs to
+    project = db.query(Project).filter(
+        Project.id == stream_db.project_id,
+        Project.user_id == user.id
+    ).first()
+    
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied"
+        )
+    
+    # Get HLS playlist path
+    hls_manager = get_hls_manager()
+    playlist_path = hls_manager.get_playlist_path(stream_id)
+    
+    if not playlist_path or not playlist_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="HLS playlist not found. Stream may not be started yet."
+        )
+    
+    return FileResponse(
+        playlist_path,
+        media_type='application/vnd.apple.mpegurl',
+        headers={
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Access-Control-Allow-Origin': 'http://localhost:3000',
+            'Access-Control-Allow-Credentials': 'true',
+            'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+        }
+    )
+
+
+@app.options("/streams/{stream_id}/hls/{segment_name}")
+async def options_hls_segment(stream_id: str, segment_name: str):
+    """Handle CORS preflight for HLS segments"""
+    return Response(
+        headers={
+            'Access-Control-Allow-Origin': 'http://localhost:3000',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+            'Access-Control-Allow-Credentials': 'true',
+            'Access-Control-Max-Age': '3600',
+        }
+    )
+
+
+@app.get("/streams/{stream_id}/hls/{segment_name}")
+async def get_hls_segment(
+    stream_id: str,
+    segment_name: str,
+    token: Optional[str] = None,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """
+    Serve HLS video segment (.ts file) for a stream
+    Supports both Authorization header and token query parameter
+    """
+    # Verify segment name is valid (security check)
+    if not segment_name.endswith('.ts') or '..' in segment_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid segment name"
+        )
+    
+    # Try to get user from either token or authorization header
+    user = None
+    if credentials:
+        try:
+            user = await get_current_user(credentials, db)
+        except:
+            pass
+    
+    if not user and token:
+        try:
+            user = await get_user_from_token(token, db)
+        except:
+            pass
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
+    
+    # Verify user has access to this stream
+    stream_db = db.query(StreamModel).filter(StreamModel.id == stream_id).first()
+    if not stream_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stream not found"
+        )
+    
+    # Check if user owns the project this stream belongs to
+    project = db.query(Project).filter(
+        Project.id == stream_db.project_id,
+        Project.user_id == user.id
+    ).first()
+    
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied"
+        )
+    
+    # Get segment file path
+    hls_manager = get_hls_manager()
+    segment_path = hls_manager.get_segment_path(stream_id, segment_name)
+    
+    if not segment_path or not segment_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Segment not found"
+        )
+    
+    return FileResponse(
+        segment_path,
+        media_type='video/mp2t',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Access-Control-Allow-Origin': 'http://localhost:3000',
+            'Access-Control-Allow-Credentials': 'true',
+            'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+        }
     )
 
 

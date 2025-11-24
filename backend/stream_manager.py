@@ -137,14 +137,25 @@ class VideoStream:
             return False
     
     def stop(self):
-        """Stop the video stream"""
+        """Stop the video stream and release all resources"""
+        logger.info(f"Stopping stream {self.config.stream_id}")
         self.is_running = False
         
-        if self.thread:
+        # Wait for processing thread to finish
+        if self.thread and self.thread.is_alive():
             self.thread.join(timeout=5)
+            if self.thread.is_alive():
+                logger.warning(f"Stream thread {self.config.stream_id} did not stop gracefully")
         
+        # Force release capture to free camera connection
         if self.capture:
-            self.capture.release()
+            try:
+                self.capture.release()
+                logger.info(f"Released camera connection for stream {self.config.stream_id}")
+            except Exception as e:
+                logger.error(f"Error releasing capture: {e}")
+            finally:
+                self.capture = None
             self.capture = None
         
         self.config.status = 'inactive'

@@ -77,4 +77,7 @@ frontend/node_modules/
 backend/.env
 frontend/.env
 backend/workplace_safety.db
+backend/hls_output/
 *.db
+*.ts
+*.m3u8
