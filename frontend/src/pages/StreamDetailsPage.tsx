@@ -14,6 +14,7 @@ interface StreamData {
   stream_id: string
   name: string
   source_url: string
+  browser_preview_url: string | null
   source_type: string
   status: string
   fps: number
@@ -56,8 +57,9 @@ export default function StreamDetailsPage() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isEditingProject, setIsEditingProject] = useState(false)
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
-  const [isEditingSourceUrl, setIsEditingSourceUrl] = useState(false)
+  const [isEditingUrls, setIsEditingUrls] = useState(false)
   const [editedSourceUrl, setEditedSourceUrl] = useState('')
+  const [editedBrowserPreviewUrl, setEditedBrowserPreviewUrl] = useState('')
   const videoRef = useRef<HTMLVideoElement>(null)
   const videoContainerRef = useRef<HTMLDivElement>(null)
   const hlsRef = useRef<Hls | null>(null)
@@ -98,13 +100,14 @@ export default function StreamDetailsPage() {
     [projectsData]
   )
 
-  // Set initial project ID and source URL when stream loads
+  // Set initial project ID and URLs when stream loads
   useEffect(() => {
     if (stream && selectedProjectId === null) {
       setSelectedProjectId(stream.project?.id || null)
     }
     if (stream && !editedSourceUrl) {
       setEditedSourceUrl(stream.source_url)
+      setEditedBrowserPreviewUrl(stream.browser_preview_url || '')
     }
   }, [stream, selectedProjectId, editedSourceUrl])
 
@@ -130,9 +133,13 @@ export default function StreamDetailsPage() {
         debug: false,
         enableWorker: true,
         lowLatencyMode: true,
-        backBufferLength: 90,
-        maxBufferLength: 30,
+        // Live-first DVR configuration
+        liveSyncDurationCount: 3,        // Stay close to live edge
+        liveMaxLatencyDurationCount: 10, // Max allowed lag from live
+        maxBufferLength: 30,             // Buffer 30 seconds ahead
         maxMaxBufferLength: 60,
+        backBufferLength: 90,            // Keep 90s behind for seeking
+        liveDurationInfinity: true,      // Treat as live stream
         maxBufferSize: 60 * 1000 * 1000,
         maxBufferHole: 0.5,
         highBufferWatchdogPeriod: 2,
@@ -237,12 +244,12 @@ export default function StreamDetailsPage() {
 
   // Update stream mutation
   const updateMutation = useMutation({
-    mutationFn: (data: { name?: string; project_id?: number; source_url?: string }) =>
+    mutationFn: (data: { name?: string; project_id?: number; source_url?: string; browser_preview_url?: string }) =>
       streamApi.update(streamId!, data),
     onSuccess: () => {
       toast.success('Stream updated successfully')
       setIsEditingProject(false)
-      setIsEditingSourceUrl(false)
+      setIsEditingUrls(false)
       queryClient.invalidateQueries({ queryKey: ['stream', streamId] })
       queryClient.invalidateQueries({ queryKey: ['streams'] })
     },
@@ -287,18 +294,21 @@ export default function StreamDetailsPage() {
     updateMutation.mutate({ project_id: selectedProjectId })
   }
 
-  const handleSaveSourceUrl = () => {
+  const handleSaveUrls = () => {
     if (!editedSourceUrl || editedSourceUrl.trim() === '') {
-      toast.error('Source URL cannot be empty')
+      toast.error('AI Detection URL cannot be empty')
       return
     }
     
     if (stream?.status === 'active') {
-      toast.error('Stream must be stopped before changing source URL')
+      toast.error('Stream must be stopped before changing URLs')
       return
     }
     
-    updateMutation.mutate({ source_url: editedSourceUrl.trim() })
+    updateMutation.mutate({ 
+      source_url: editedSourceUrl.trim(),
+      browser_preview_url: editedBrowserPreviewUrl.trim() || undefined  // Empty string = use source_url
+    })
   }
 
   const handleRetry = () => {
@@ -536,24 +546,28 @@ export default function StreamDetailsPage() {
       <div className="card">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Stream Controls</h3>
         
-        {/* Dual Connection Warning for RTSP */}
+        {/* Dual Connection Notice for RTSP */}
         {stream.source_type === 'rtsp' && (
-          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-            <p className="text-sm text-amber-800">
-              <strong>📡 Dual Connection Notice:</strong> This system uses two connections to your camera:
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800">
+              <strong>📡 Dual Stream Configuration:</strong> This system can use two connections:
               <br />
-              • AI Detection (OpenCV) for analyzing safety violations
+              • <strong>AI Detection:</strong> {stream.source_url} - For safety analysis
               <br />
-              • Browser Streaming (FFmpeg) for live video preview
-              <br />
-              <br />
-              If you encounter connection errors, consider:
-              <br />
-              • Using a substream URL (e.g., /stream2 instead of /stream1)
-              <br />
-              • Rebooting your camera to free up connections
-              <br />
-              • Using "Open in VLC" for full quality playback without browser streaming
+              • <strong>Browser Preview:</strong> {stream.browser_preview_url || stream.source_url} - For live viewing
+              {stream.browser_preview_url && stream.browser_preview_url !== stream.source_url ? (
+                <>
+                  <br />
+                  <br />
+                  ✅ <strong>Optimized:</strong> Using separate URLs to avoid camera connection limits
+                </>
+              ) : (
+                <>
+                  <br />
+                  <br />
+                  💡 <strong>Tip:</strong> If you encounter connection limit errors, configure a separate Browser Preview URL (e.g., use /stream2 substream)
+                </>
+              )}
             </p>
           </div>
         )}
@@ -725,63 +739,99 @@ export default function StreamDetailsPage() {
       {/* Stream Info */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">Stream Information</h3>
-          {!isEditingSourceUrl && stream.status !== 'active' && (
+          <h3 className="text-lg font-semibold text-gray-900">Stream URLs</h3>
+          {!isEditingUrls && stream.status !== 'active' && (
             <button
-              onClick={() => setIsEditingSourceUrl(true)}
+              onClick={() => setIsEditingUrls(true)}
               className="btn-secondary flex items-center text-sm"
             >
               <Settings className="h-4 w-4 mr-2" />
-              Edit Source URL
+              Edit URLs
             </button>
           )}
         </div>
         
-        {isEditingSourceUrl ? (
-          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Source URL
-            </label>
-            <input
-              type="text"
-              value={editedSourceUrl}
-              onChange={(e) => setEditedSourceUrl(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-              placeholder="rtsp://username:password@192.168.1.100:554/stream1"
-            />
-            <div className="mt-2 flex gap-2">
+        {isEditingUrls ? (
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                AI Detection URL
+                <span className="text-red-500 ml-1">*</span>
+              </label>
+              <input
+                type="text"
+                value={editedSourceUrl}
+                onChange={(e) => setEditedSourceUrl(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                placeholder="rtsp://username:password@192.168.1.100:554/stream1"
+              />
+              <p className="mt-1 text-xs text-gray-600">
+                High quality stream for AI safety analysis
+              </p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Browser Preview URL
+                <span className="text-gray-500 ml-1">(Optional)</span>
+              </label>
+              <input
+                type="text"
+                value={editedBrowserPreviewUrl}
+                onChange={(e) => setEditedBrowserPreviewUrl(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                placeholder="rtsp://username:password@192.168.1.100:554/stream2 (leave empty to use AI URL)"
+              />
+              <p className="mt-1 text-xs text-gray-600">
+                Optional lower quality substream for browser viewing. Leave empty to use AI Detection URL.
+              </p>
+            </div>
+            
+            <div className="flex gap-2 pt-2">
               <button
-                onClick={handleSaveSourceUrl}
+                onClick={handleSaveUrls}
                 disabled={updateMutation.isPending}
                 className="btn-primary flex items-center disabled:opacity-50 text-sm"
               >
                 <Save className="h-4 w-4 mr-2" />
-                {updateMutation.isPending ? 'Saving...' : 'Save URL'}
+                {updateMutation.isPending ? 'Saving...' : 'Save URLs'}
               </button>
               <button
                 onClick={() => {
-                  setIsEditingSourceUrl(false)
+                  setIsEditingUrls(false)
                   setEditedSourceUrl(stream.source_url)
+                  setEditedBrowserPreviewUrl(stream.browser_preview_url || '')
                 }}
                 className="btn-secondary text-sm"
               >
                 Cancel
               </button>
             </div>
-            <p className="mt-2 text-xs text-gray-600">
-              ⚠️ Stream must be stopped to change the source URL
+            <p className="mt-2 text-xs text-gray-600 border-t border-gray-300 pt-2">
+              ⚠️ Stream must be stopped to change URLs
             </p>
           </div>
         ) : null}
         
-        <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {!isEditingSourceUrl && (
-            <div>
-              <dt className="text-sm font-medium text-gray-600">Source URL</dt>
-              <dd className="mt-1 text-sm text-gray-900 font-mono break-all">
-                {stream.source_url}
-              </dd>
-            </div>
+        <dl className="grid grid-cols-1 gap-4">
+          {!isEditingUrls && (
+            <>
+              <div>
+                <dt className="text-sm font-medium text-gray-600">AI Detection URL</dt>
+                <dd className="mt-1 text-sm text-gray-900 font-mono break-all">
+                  {stream.source_url}
+                </dd>
+                <p className="mt-1 text-xs text-gray-600">Used for safety analysis</p>
+              </div>
+              
+              <div>
+                <dt className="text-sm font-medium text-gray-600">Browser Preview URL</dt>
+                <dd className="mt-1 text-sm text-gray-900 font-mono break-all">
+                  {stream.browser_preview_url || <span className="text-gray-500 italic">Using AI Detection URL</span>}
+                </dd>
+                <p className="mt-1 text-xs text-gray-600">Used for browser viewing</p>
+              </div>
+            </>
           )}
           
           <div>

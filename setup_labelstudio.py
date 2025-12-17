@@ -79,16 +79,62 @@ def check_labelstudio_installed():
         return False
 
 def install_labelstudio():
-    """Install Label Studio"""
+    """Install Label Studio with Windows-specific error handling"""
     print("Installing Label Studio...")
-    try:
-        subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', 'labelstudio_requirements.txt'], 
-                      check=True)
-        print("Label Studio installed successfully!")
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"Error installing Label Studio: {e}")
-        return False
+    
+    # Detect Windows
+    is_windows = sys.platform.startswith('win')
+    
+    # Try multiple installation strategies for Windows compatibility
+    strategies = []
+    
+    if is_windows:
+        # On Windows, try --user first to avoid permission issues
+        strategies.append(
+            [sys.executable, '-m', 'pip', 'install', '--user', '-r', 'labelstudio_requirements.txt']
+        )
+    
+    # Add other strategies
+    strategies.extend([
+        # Standard install with upgrade
+        [sys.executable, '-m', 'pip', 'install', '--upgrade', '-r', 'labelstudio_requirements.txt'],
+        # Install with --no-cache-dir to avoid file locking issues
+        [sys.executable, '-m', 'pip', 'install', '--no-cache-dir', '-r', 'labelstudio_requirements.txt'],
+    ])
+    
+    for i, cmd in enumerate(strategies, 1):
+        try:
+            print(f"\nTrying installation strategy {i}...")
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            print("Label Studio installed successfully!")
+            return True
+        except subprocess.CalledProcessError as e:
+            error_output = e.stderr if e.stderr else e.stdout
+            if i < len(strategies):
+                print(f"Strategy {i} failed, trying next approach...")
+                print(f"Error: {error_output[:200]}...")  # Show first 200 chars
+            else:
+                print(f"\nAll installation strategies failed.")
+                print(f"Last error: {error_output}")
+                print("\n" + "=" * 60)
+                print("TROUBLESHOOTING:")
+                print("=" * 60)
+                print("\nThis is a common Windows issue where pip can't rename files.")
+                print("Try these solutions:\n")
+                print("1. Close any Python processes or IDEs that might be using the files")
+                print("2. Run PowerShell/CMD as Administrator and try again")
+                print("3. Manually uninstall problematic packages first:")
+                print("   python -m pip uninstall genson -y")
+                print("   python -m pip install -r labelstudio_requirements.txt")
+                print("\n4. Or install with --user flag (installs to user directory):")
+                print("   python -m pip install --user -r labelstudio_requirements.txt")
+                print("\n5. Or use a virtual environment (recommended):")
+                print("   python -m venv venv")
+                print("   venv\\Scripts\\activate")
+                print("   pip install -r labelstudio_requirements.txt")
+                return False
+    
+    return False
 
 def main():
     print("=" * 60)

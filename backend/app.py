@@ -207,6 +207,7 @@ class AlertNotification(BaseModel):
 class StreamCreate(BaseModel):
     name: str
     source_url: str
+    browser_preview_url: Optional[str] = None
     source_type: str  # 'rtsp', 'rtmp', 'http', 'webcam'
     project_id: int
     fps: int = 30
@@ -229,6 +230,7 @@ class StreamUpdate(BaseModel):
     name: Optional[str] = None
     project_id: Optional[int] = None
     source_url: Optional[str] = None
+    browser_preview_url: Optional[str] = None
 
 
 class ProjectCreate(BaseModel):
@@ -1541,6 +1543,7 @@ async def create_stream(
         project_id=stream_data.project_id,
         name=stream_data.name,
         source_url=stream_data.source_url,
+        browser_preview_url=stream_data.browser_preview_url,
         source_type=stream_data.source_type,
         status="inactive",
         error_message=None,
@@ -1580,6 +1583,7 @@ async def list_streams(
             "stream_id": stream.id,
             "name": stream.name,
             "source_url": stream.source_url,
+            "browser_preview_url": stream.browser_preview_url,
             "source_type": stream.source_type,
             "status": stream.status,
             "fps": stream.fps,
@@ -1674,6 +1678,7 @@ async def get_stream_status(
         "stream_id": stream_db.id,
         "name": stream_db.name,
         "source_url": stream_db.source_url,
+        "browser_preview_url": stream_db.browser_preview_url,
         "source_type": stream_db.source_type,
         "status": stream_db.status,
         "fps": stream_db.fps,
@@ -1792,11 +1797,11 @@ async def update_stream(
             detail="You don't have permission to update this stream"
         )
     
-    # Check if stream is active - must be stopped to update source URL
-    if stream_data.source_url is not None and stream_db.status == "active":
+    # Check if stream is active - must be stopped to update URLs
+    if (stream_data.source_url is not None or stream_data.browser_preview_url is not None) and stream_db.status == "active":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Stream must be stopped before changing source URL"
+            detail="Stream must be stopped before changing URLs"
         )
     
     # Update name if provided
@@ -1812,6 +1817,22 @@ async def update_stream(
                 detail=f"Invalid {stream_db.source_type} URL format"
             )
         stream_db.source_url = stream_data.source_url
+        # Clear any previous error message when URL is updated
+        stream_db.error_message = None
+    
+    # Update browser preview URL if provided (can be set to empty string to use source_url)
+    if stream_data.browser_preview_url is not None:
+        # Empty string means use source_url (set to NULL)
+        if stream_data.browser_preview_url.strip() == "":
+            stream_db.browser_preview_url = None
+        else:
+            # Validate the new URL
+            if not validate_stream_url(stream_data.browser_preview_url, stream_db.source_type):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid {stream_db.source_type} URL format for browser preview"
+                )
+            stream_db.browser_preview_url = stream_data.browser_preview_url
         # Clear any previous error message when URL is updated
         stream_db.error_message = None
     
@@ -1839,6 +1860,7 @@ async def update_stream(
         "name": stream_db.name,
         "project_id": stream_db.project_id,
         "source_url": stream_db.source_url,
+        "browser_preview_url": stream_db.browser_preview_url,
         "message": "Stream updated successfully"
     }
 
@@ -1899,10 +1921,15 @@ async def start_stream(
     manager.add_stream(stream_config)
     
     # Also start HLS transcoding for browser viewing
+    # Use browser_preview_url if set, otherwise use source_url
+    hls_source_url = stream_db.browser_preview_url if stream_db.browser_preview_url else stream_db.source_url
+    if hls_source_url != stream_db.source_url:
+        logger.info(f"Using separate URL for browser preview: {hls_source_url}")
+    
     hls_manager = get_hls_manager()
     hls_started, hls_error = hls_manager.start_hls_stream(
         stream_id=stream_id,
-        source_url=stream_db.source_url,
+        source_url=hls_source_url,
         source_type=stream_db.source_type
     )
     

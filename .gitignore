@@ -81,3 +81,4 @@ backend/hls_output/
 *.db
 *.ts
 *.m3u8
+label-studio-data/.env

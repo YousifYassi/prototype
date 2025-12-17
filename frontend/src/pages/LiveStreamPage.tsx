@@ -47,6 +47,7 @@ interface Stream {
 interface StreamFormData {
   name: string
   source_url: string
+  browser_preview_url: string
   source_type: 'rtsp' | 'rtmp' | 'http' | 'webcam'
   project_id: number | null
   fps: number
@@ -59,6 +60,7 @@ export default function LiveStreamPage() {
   const [formData, setFormData] = useState<StreamFormData>({
     name: '',
     source_url: '',
+    browser_preview_url: '',
     source_type: 'rtsp',
     project_id: null,
     fps: 30,
@@ -109,6 +111,7 @@ export default function LiveStreamPage() {
       await streamApi.create({
         name: formData.name,
         source_url: formData.source_url,
+        browser_preview_url: formData.browser_preview_url || undefined,
         source_type: formData.source_type,
         project_id: formData.project_id,
         fps: formData.fps,
@@ -119,6 +122,7 @@ export default function LiveStreamPage() {
       setFormData({
         name: '',
         source_url: '',
+        browser_preview_url: '',
         source_type: 'rtsp',
         project_id: null,
         fps: 30,
@@ -234,7 +238,7 @@ export default function LiveStreamPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Source URL
+                AI Detection URL *
               </label>
               <input
                 type="text"
@@ -247,7 +251,7 @@ export default function LiveStreamPage() {
                   formData.source_type === 'webcam'
                     ? '0 (for default webcam)'
                     : formData.source_type === 'rtsp'
-                    ? 'rtsp://username:password@192.168.1.100:554/stream'
+                    ? 'rtsp://username:password@192.168.1.100:554/stream1'
                     : 'Stream URL'
                 }
                 required
@@ -256,8 +260,33 @@ export default function LiveStreamPage() {
                 {formData.source_type === 'webcam'
                   ? 'Enter camera index (usually 0 for default webcam)'
                   : formData.source_type === 'rtsp'
-                  ? 'Format: rtsp://[username:password@]ip:port/path'
+                  ? 'High quality stream for AI safety analysis. Format: rtsp://[user:pass@]ip:port/path'
                   : 'Enter the full stream URL'}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Browser Preview URL
+                <span className="text-gray-500 ml-1">(Optional)</span>
+              </label>
+              <input
+                type="text"
+                value={formData.browser_preview_url}
+                onChange={(e) =>
+                  setFormData({ ...formData, browser_preview_url: e.target.value })
+                }
+                className="input"
+                placeholder={
+                  formData.source_type === 'rtsp'
+                    ? 'rtsp://username:password@192.168.1.100:554/stream2'
+                    : 'Leave empty to use AI Detection URL'
+                }
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                {formData.source_type === 'rtsp'
+                  ? 'Optional lower quality substream for browser viewing. Leave empty to use AI Detection URL. Use /stream2 to avoid camera connection limits.'
+                  : 'Optional separate URL for browser viewing. Leave empty to use AI Detection URL.'}
               </p>
             </div>
 

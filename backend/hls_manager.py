@@ -67,11 +67,13 @@ class HLSStreamManager:
                 # Audio (copy or remove if not needed)
                 '-an',  # No audio for now (simpler)
                 
-                # HLS output options
+                # HLS output options - DVR-style with live-first approach
                 '-f', 'hls',
                 '-hls_time', '2',  # 2 second segments
-                '-hls_list_size', '5',  # Keep last 5 segments in playlist
-                '-hls_flags', 'delete_segments+append_list',  # Delete old segments
+                '-hls_list_size', '0',  # Unlimited segments in playlist (allows DVR seeking)
+                '-hls_flags', 'delete_segments+append_list',  # Delete old segments beyond threshold
+                '-hls_delete_threshold', '150',  # Keep last 150 segments (~5 minutes at 2s each)
+                '-hls_segment_type', 'mpegts',
                 '-hls_segment_filename', str(stream_dir / 'segment_%03d.ts'),
                 str(playlist_path)
             ]

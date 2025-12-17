@@ -175,7 +175,8 @@ class Stream(Base):
     id = Column(String, primary_key=True, index=True)  # UUID
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     name = Column(String, nullable=False)
-    source_url = Column(String, nullable=False)
+    source_url = Column(String, nullable=False)  # URL for AI detection
+    browser_preview_url = Column(String, nullable=True)  # Optional URL for browser viewing (uses source_url if NULL)
     source_type = Column(String, nullable=False)  # rtsp, rtmp, http, webcam
     status = Column(String, default="inactive")  # inactive, active, error
     error_message = Column(Text, nullable=True)  # Error details if status is 'error'
