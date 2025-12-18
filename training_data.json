@@ -1,0 +1,91 @@
+{
+  "label_mapping": {
+    "Safe": 0,
+    "No PPE - Missing Gloves": 1,
+    "No PPE - Missing Helmet": 2,
+    "No PPE - Missing Safety Glasses": 3,
+    "No PPE - Missing High Visibility Vest": 4,
+    "Other Violation": 5,
+    "Unsafe Behavior": 6,
+    "Near Miss": 7
+  },
+  "samples": [
+    {
+      "video_path": "C:/Users/yousi/prototype/datasets/CharadesEgo_v1/videos/005BU.mp4",
+      "label": "No PPE - Missing Gloves",
+      "label_id": 1,
+      "start_frame": 187,
+      "end_frame": 625
+    },
+    {
+      "video_path": "C:/Users/yousi/prototype/datasets/CharadesEgo_v1/videos/005BU.mp4",
+      "label": "Other Violation",
+      "label_id": 5,
+      "start_frame": 680,
+      "end_frame": 836
+    },
+    {
+      "video_path": "C:/Users/yousi/prototype/datasets/CharadesEgo_v1/videos/005BUEGO.mp4",
+      "label": "No PPE - Missing Gloves",
+      "label_id": 1,
+      "start_frame": 229,
+      "end_frame": 787
+    },
+    {
+      "video_path": "C:/Users/yousi/prototype/datasets/CharadesEgo_v1/videos/005BUEGO.mp4",
+      "label": "Other Violation",
+      "label_id": 5,
+      "start_frame": 861,
+      "end_frame": 987
+    },
+    {
+      "video_path": "C:/Users/yousi/prototype/datasets/CharadesEgo_v1/videos/00V9V.mp4",
+      "label": "Other Violation",
+      "label_id": 5,
+      "start_frame": 1,
+      "end_frame": 713
+    },
+    {
+      "video_path": "C:/Users/yousi/prototype/datasets/CharadesEgo_v1/videos/00V9VEGO.mp4",
+      "label": "Other Violation",
+      "label_id": 5,
+      "start_frame": 178,
+      "end_frame": 382
+    },
+    {
+      "video_path": "C:/Users/yousi/prototype/datasets/CharadesEgo_v1/videos/011MV.mp4",
+      "label": "No PPE - Missing Gloves",
+      "label_id": 1,
+      "start_frame": 1,
+      "end_frame": 741
+    },
+    {
+      "video_path": "C:/Users/yousi/prototype/datasets/CharadesEgo_v1/videos/011MVEGO.mp4",
+      "label": "No PPE - Missing Gloves",
+      "label_id": 1,
+      "start_frame": 1,
+      "end_frame": 744
+    },
+    {
+      "video_path": "C:/Users/yousi/prototype/datasets/CharadesEgo_v1/videos/013GW.mp4",
+      "label": "Other Violation",
+      "label_id": 5,
+      "start_frame": 600,
+      "end_frame": 713
+    },
+    {
+      "video_path": "C:/Users/yousi/prototype/datasets/CharadesEgo_v1/videos/022ET.mp4",
+      "label": "Other Violation",
+      "label_id": 5,
+      "start_frame": 116,
+      "end_frame": 416
+    },
+    {
+      "video_path": "C:/Users/yousi/prototype/datasets/CharadesEgo_v1/videos/022ETEGO.mp4",
+      "label": "Other Violation",
+      "label_id": 5,
+      "start_frame": 1,
+      "end_frame": 325
+    }
+  ]
+}

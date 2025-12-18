@@ -27,17 +27,17 @@ dataset:
       default_label: 0
       recursive: true
   
-# Unsafe Action Categories (customize based on your use case)
+# Unsafe Action Categories - PPE and Safety Violations
+# These map to labels used in Label Studio annotations
 unsafe_actions:
-  - "aggressive_driving"
-  - "tailgating"
-  - "unsafe_lane_change"
-  - "running_red_light"
-  - "distracted_driver"
-  - "speeding"
-  - "wrong_way_driving"
-  - "pedestrian_collision_risk"
-  - "near_miss"
+  0: "Safe"
+  1: "No PPE - Missing Gloves"
+  2: "No PPE - Missing Helmet"
+  3: "No PPE - Missing Safety Glasses"
+  4: "No PPE - Missing High Visibility Vest"
+  5: "Other Violation"
+  6: "Unsafe Behavior"
+  7: "Near Miss"
 
 # Jurisdiction and Industry-Specific Action Categories
 jurisdiction_industry_actions:
@@ -72,9 +72,9 @@ jurisdiction_industry_actions:
 
 # Model Configuration
 model:
-  architecture: "video_action_detector"  # Options: video_action_detector, slowfast, i3d
-  backbone: "resnet50"  # Base CNN backbone (use resnet18 if GPU memory is limited)
-  num_classes: 10  # Number of unsafe action categories + 1 safe class (0-9)
+  architecture: "video_action_detector"  # Options: video_action_detector, lstm, c3d
+  backbone: "resnet18"  # Use resnet18 for faster training (resnet50 for better accuracy)
+  num_classes: 8  # Number of classes: Safe + 7 violation types
   num_frames: 16  # Number of frames to process at once (reduce to 8 if GPU memory issues)
   frame_interval: 2  # Sample every N frames
   input_size: [224, 224]  # Frame resolution

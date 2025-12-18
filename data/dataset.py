@@ -235,9 +235,9 @@ class FolderVideoDataset(VideoActionDataset):
                 invalid_count += 1
             cap.release()
         
-        print(f"✓ Loaded {valid_count} valid videos from {self.folder_path}")
+        print(f"[OK] Loaded {valid_count} valid videos from {self.folder_path}")
         if invalid_count > 0:
-            print(f"✗ Skipped {invalid_count} corrupted/invalid videos")
+            print(f"[SKIP] Skipped {invalid_count} corrupted/invalid videos")
         
         return video_paths, labels
 
