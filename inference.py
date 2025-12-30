@@ -33,14 +33,10 @@ class UnsafeActionDetector:
         self.logger = setup_logger(config['logging']['save_dir'])
         self.logger.info(f"Detector initialized on device: {self.device}")
         
-        # Load model
-        self.model = self.load_model(model_path)
-        self.model.eval()
-        
         # Project context for jurisdiction/industry-specific rules
         self.project_context = project_context or {}
         
-        # Action classes
+        # Action classes (default from config, may be overridden by checkpoint)
         self.action_classes = ['safe'] + config['unsafe_actions']
         
         # Load jurisdiction-specific actions if available
@@ -51,6 +47,10 @@ class UnsafeActionDetector:
                 if specific_actions:
                     self.action_classes = ['safe'] + specific_actions
                     self.logger.info(f"Using {len(specific_actions)} actions for {jurisdiction_industry_key}")
+        
+        # Load model (may override action_classes from checkpoint's label_mapping)
+        self.model = self.load_model(model_path)
+        self.model.eval()
         
         # Inference settings
         self.confidence_threshold = config['inference']['confidence_threshold']
@@ -88,13 +88,34 @@ class UnsafeActionDetector:
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model checkpoint not found: {model_path}")
         
-        # Create model
-        model = create_model(self.config)
+        # Load checkpoint first to get the config it was trained with
+        checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
         
-        # Load checkpoint
-        checkpoint = torch.load(model_path, map_location=self.device)
+        # Use checkpoint config if available (for architecture compatibility)
+        checkpoint_config = checkpoint.get('config', None)
+        if checkpoint_config and 'model' in checkpoint_config:
+            # Use the model architecture from the checkpoint
+            model_config = checkpoint_config
+            self.logger.info(f"Using model config from checkpoint: backbone={model_config['model'].get('backbone')}, num_classes={model_config['model'].get('num_classes')}")
+        else:
+            # Fall back to provided config
+            model_config = self.config
+            self.logger.info("Using config.yaml for model architecture")
+        
+        # Create model with the correct architecture
+        model = create_model(model_config)
+        
+        # Load the weights
         model.load_state_dict(checkpoint['model_state_dict'])
         model.to(self.device)
+        
+        # Update action classes from checkpoint's label mapping if available
+        label_mapping = checkpoint.get('label_mapping', None)
+        if label_mapping:
+            # Build action classes list from label mapping
+            sorted_labels = sorted(label_mapping.items(), key=lambda x: x[1])
+            self.action_classes = [label for label, _ in sorted_labels]
+            self.logger.info(f"Loaded {len(self.action_classes)} action classes from checkpoint")
         
         self.logger.info(f"Loaded model from: {model_path}")
         return model

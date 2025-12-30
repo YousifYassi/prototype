@@ -109,10 +109,15 @@ async def shutdown_event():
 def get_detector():
     global detector
     if detector is None:
-        model_path = "checkpoints/best_model.pth"
+        # Use the safety model trained with Label Studio annotations
+        model_path = "checkpoints/safety_model_best.pth"
         if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model not found: {model_path}")
+            # Fall back to generic model if safety model not available
+            model_path = "checkpoints/best_model.pth"
+            if not os.path.exists(model_path):
+                raise FileNotFoundError(f"No model checkpoint found. Train a model first.")
         detector = UnsafeActionDetector(config, model_path)
+        logger.info(f"Loaded detector model from: {model_path}")
     return detector
 
 
@@ -1070,13 +1075,17 @@ async def process_video_task(
                 VideoProcessing.id == video_id
             ).first()
             if not video_record:
+                logger.error(f"[Video {video_id}] Video record not found in database")
                 return
 
+            logger.info(f"[Video {video_id}] Starting processing: {video_record.filename}")
             video_record.status = "processing"
             db.commit()
 
             # Get detector with project-specific model if available
+            logger.info(f"[Video {video_id}] Loading AI model...")
             detector = get_detector_for_project(db, project_id) if project_id else get_detector()
+            logger.info(f"[Video {video_id}] AI model loaded successfully")
 
             alert_config = db.query(AlertConfig).filter(
                 AlertConfig.user_id == user_id
@@ -1089,20 +1098,57 @@ async def process_video_task(
 
             import cv2
             cap = cv2.VideoCapture(video_path)
+            
+            if not cap.isOpened():
+                raise Exception(f"Failed to open video file: {video_path}")
+
+            # Get video properties for progress tracking
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = cap.get(cv2.CAP_PROP_FPS) or 30
+            duration_sec = total_frames / fps if fps > 0 else 0
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            
+            logger.info(f"[Video {video_id}] Video info: {total_frames} frames, {fps:.1f} FPS, {duration_sec:.1f}s duration, {width}x{height}")
 
             unsafe_actions_detected = []
+            frame_count = 0
+            last_progress_log = 0
+            progress_interval = max(1, total_frames // 10)  # Log every 10%
+            start_time = time.time()
 
             try:
                 while True:
                     ret, frame = cap.read()
                     if not ret:
                         break
+                    
+                    frame_count += 1
+                    
+                    # Log progress every 10% or at least every 100 frames
+                    if frame_count - last_progress_log >= progress_interval or frame_count == 1:
+                        elapsed = time.time() - start_time
+                        progress_pct = (frame_count / total_frames * 100) if total_frames > 0 else 0
+                        frames_per_sec = frame_count / elapsed if elapsed > 0 else 0
+                        eta_sec = (total_frames - frame_count) / frames_per_sec if frames_per_sec > 0 else 0
+                        logger.info(
+                            f"[Video {video_id}] Progress: {progress_pct:.1f}% "
+                            f"({frame_count}/{total_frames} frames) | "
+                            f"Speed: {frames_per_sec:.1f} fps | "
+                            f"ETA: {eta_sec:.0f}s"
+                        )
+                        last_progress_log = frame_count
 
                     result = detector.process_frame(frame)
 
                     if result.get('alert') and result.get('is_unsafe'):
                         action = result['action']
                         confidence = result['confidence']
+                        
+                        logger.warning(
+                            f"[Video {video_id}] UNSAFE ACTION DETECTED at frame {frame_count}: "
+                            f"{action} (confidence: {confidence:.2%})"
+                        )
 
                         if alert_config:
                             if alert_config.enable_email and alert_config.email:
@@ -1114,8 +1160,17 @@ async def process_video_task(
                         unsafe_actions_detected.append({
                             "action": action,
                             "confidence": float(confidence),
+                            "frame": frame_count,
                             "timestamp": datetime.now().isoformat()
                         })
+                        
+                # Log completion
+                elapsed = time.time() - start_time
+                avg_fps = frame_count / elapsed if elapsed > 0 else 0
+                logger.info(
+                    f"[Video {video_id}] Processing complete: {frame_count} frames in {elapsed:.1f}s "
+                    f"(avg {avg_fps:.1f} fps)"
+                )
             finally:
                 cap.release()
 
@@ -1125,17 +1180,23 @@ async def process_video_task(
                     "unsafe_actions": unsafe_actions_detected,
                     "total_detections": len(unsafe_actions_detected)
                 })
+                logger.warning(
+                    f"[Video {video_id}] RESULT: {len(unsafe_actions_detected)} unsafe actions detected"
+                )
             else:
                 video_record.status = "safe"
                 video_record.result = json.dumps({
                     "unsafe_actions": [],
                     "total_detections": 0
                 })
+                logger.info(f"[Video {video_id}] RESULT: No unsafe actions detected - video is safe")
 
             video_record.processed_at = datetime.utcnow()
             db.commit()
+            logger.info(f"[Video {video_id}] Processing finished successfully")
 
         except Exception as e:
+            logger.error(f"[Video {video_id}] ERROR during processing: {str(e)}", exc_info=True)
             video_record = db.query(VideoProcessing).filter(
                 VideoProcessing.id == video_id
             ).first()
@@ -1143,7 +1204,7 @@ async def process_video_task(
                 video_record.status = "error"
                 video_record.result = json.dumps({"error": str(e)})
                 db.commit()
-            print(f"Error processing video: {e}")
+            logger.error(f"[Video {video_id}] Marked as error in database")
         finally:
             db.close()
 

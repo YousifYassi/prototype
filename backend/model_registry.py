@@ -17,7 +17,9 @@ class ModelRegistry:
     
     def __init__(self, base_checkpoint_dir: str = "checkpoints"):
         self.base_checkpoint_dir = Path(base_checkpoint_dir)
-        self.generic_model_path = self.base_checkpoint_dir / "best_model.pth"
+        # Use safety model trained with Label Studio annotations as the default
+        self.safety_model_path = self.base_checkpoint_dir / "safety_model_best.pth"
+        self.legacy_model_path = self.base_checkpoint_dir / "best_model.pth"
         
         # Cache loaded model paths to avoid redundant checks
         self._model_cache = {}
@@ -99,15 +101,19 @@ class ModelRegistry:
                 self._model_cache[cache_key] = result
                 return result
         
-        # Priority 5: Generic fallback model
-        if not self.generic_model_path.exists():
-            raise FileNotFoundError(
-                f"Generic model not found at {self.generic_model_path}. "
-                "Please ensure a trained model exists."
-            )
+        # Priority 5: Generic fallback model (prefer safety model over legacy)
+        if self.safety_model_path.exists():
+            logger.info(f"Using safety model (Label Studio trained): {self.safety_model_path}")
+            return str(self.safety_model_path), "generic"
         
-        logger.info(f"Using generic fallback model: {self.generic_model_path}")
-        return str(self.generic_model_path), "generic"
+        if self.legacy_model_path.exists():
+            logger.info(f"Using legacy fallback model: {self.legacy_model_path}")
+            return str(self.legacy_model_path), "generic"
+        
+        raise FileNotFoundError(
+            f"No model found. Checked: {self.safety_model_path}, {self.legacy_model_path}. "
+            "Please train a model first using train_safety_model.py"
+        )
     
     def list_available_models(self) -> dict:
         """
@@ -118,21 +124,25 @@ class ModelRegistry:
         """
         models = {
             "generic": None,
+            "safety_model": None,
             "jurisdiction_industry": [],
             "industry": [],
             "jurisdiction": [],
             "other": []
         }
         
-        if self.generic_model_path.exists():
-            models["generic"] = str(self.generic_model_path)
+        if self.safety_model_path.exists():
+            models["safety_model"] = str(self.safety_model_path)
+            models["generic"] = str(self.safety_model_path)  # Safety model is the default
+        elif self.legacy_model_path.exists():
+            models["generic"] = str(self.legacy_model_path)
         
         # Scan checkpoint directory for models
         if self.base_checkpoint_dir.exists():
             for model_file in self.base_checkpoint_dir.glob("*.pth"):
                 model_name = model_file.stem
                 
-                if model_name == "best_model":
+                if model_name in ["best_model", "safety_model_best", "safety_model_latest"]:
                     continue  # Already handled
                 
                 # Check pattern

@@ -29,15 +29,17 @@ dataset:
   
 # Unsafe Action Categories - PPE and Safety Violations
 # These map to labels used in Label Studio annotations
+# Unsafe action list (class 0 is always "safe", these are classes 1-9)
 unsafe_actions:
-  0: "Safe"
-  1: "No PPE - Missing Gloves"
-  2: "No PPE - Missing Helmet"
-  3: "No PPE - Missing Safety Glasses"
-  4: "No PPE - Missing High Visibility Vest"
-  5: "Other Violation"
-  6: "Unsafe Behavior"
-  7: "Near Miss"
+  - "No PPE - Missing Gloves"
+  - "No PPE - Missing Helmet"
+  - "No PPE - Missing Safety Glasses"
+  - "No PPE - Missing High Visibility Vest"
+  - "Other Violation"
+  - "Unsafe Behavior"
+  - "Near Miss"
+  - "Improper Lifting"
+  - "Blocked Exit"
 
 # Jurisdiction and Industry-Specific Action Categories
 jurisdiction_industry_actions:
@@ -73,8 +75,8 @@ jurisdiction_industry_actions:
 # Model Configuration
 model:
   architecture: "video_action_detector"  # Options: video_action_detector, lstm, c3d
-  backbone: "resnet18"  # Use resnet18 for faster training (resnet50 for better accuracy)
-  num_classes: 8  # Number of classes: Safe + 7 violation types
+  backbone: "resnet50"  # resnet50 matches the trained checkpoint
+  num_classes: 10  # Number of classes matching the trained model
   num_frames: 16  # Number of frames to process at once (reduce to 8 if GPU memory issues)
   frame_interval: 2  # Sample every N frames
   input_size: [224, 224]  # Frame resolution
