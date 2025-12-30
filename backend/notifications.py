@@ -6,6 +6,21 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
+from pathlib import Path
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    # Try backend/.env first, then project root .env
+    backend_env = Path(__file__).parent / ".env"
+    root_env = Path(__file__).parent.parent / ".env"
+    if backend_env.exists():
+        load_dotenv(backend_env)
+    elif root_env.exists():
+        load_dotenv(root_env)
+except ImportError:
+    pass  # python-dotenv not installed, use system environment variables
+
 import aiosmtplib
 from twilio.rest import Client as TwilioClient
 
