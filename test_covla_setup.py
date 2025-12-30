@@ -13,7 +13,7 @@ def test_covla_setup():
     try:
         from huggingface_hub import whoami
         user_info = whoami()
-        print(f"✓ Authenticated as: {user_info['name']}")
+        print(f"[OK] Authenticated as: {user_info['name']}")
     except Exception as e:
         print(f"✗ Authentication failed: {e}")
         print("\nTo fix this:")
@@ -29,7 +29,7 @@ def test_covla_setup():
         
         # Try mini dataset first
         dataset = load_dataset("turing-motors/CoVLA-Dataset-Mini")
-        print(f"✓ Successfully loaded CoVLA-Dataset-Mini!")
+        print(f"[OK] Successfully loaded CoVLA-Dataset-Mini!")
         print(f"  Available splits: {list(dataset.keys())}")
         
         if 'train' in dataset:
@@ -50,11 +50,11 @@ def test_covla_setup():
 
 if __name__ == '__main__':
     if test_covla_setup():
-        print("\n🎉 CoVLA setup is working correctly!")
+        print("\nCoVLA setup is working correctly!")
         print("\nYou can now:")
         print("1. Run: python test_covla_dataset.py")
         print("2. Run: python train.py")
     else:
-        print("\n❌ CoVLA setup needs attention.")
+        print("\n[X] CoVLA setup needs attention.")
         print("Please follow the steps above to complete authentication.")
 

@@ -552,7 +552,7 @@ async def send_test_email(
             
             <div style="background-color: #f3f4f6; padding: 20px; border-radius: 0 0 8px 8px;">
                 <div style="background-color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
-                    <h2 style="color: #1f2937; margin-top: 0;">✅ Your Email Alerts Are Working!</h2>
+                    <h2 style="color: #1f2937; margin-top: 0;">Your Email Alerts Are Working!</h2>
                     <p style="color: #4b5563; line-height: 1.6;">
                         This is a <strong>test message</strong> from your Workplace Safety Monitoring System. 
                         <strong>No action is required.</strong>
@@ -565,7 +565,7 @@ async def send_test_email(
                 
                 <div style="background-color: #dbeafe; border-left: 4px solid #3b82f6; padding: 15px; border-radius: 4px;">
                     <p style="color: #1e40af; margin: 0; font-size: 14px;">
-                        <strong>📧 Test Email Details:</strong>
+                        <strong>Test Email Details:</strong>
                     </p>
                     <ul style="color: #1e40af; margin: 10px 0 0 0; font-size: 14px;">
                         <li>Email Address: {email_to}</li>

@@ -50,13 +50,13 @@ async def send_email_alert(
     from datetime import datetime
     
     # Create email content
-    subject = f"⚠️ Unsafe Action Detected: {action}"
+    subject = f"[ALERT] Unsafe Action Detected: {action}"
     
     html_content = f"""
     <html>
         <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="background-color: #ff4444; color: white; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-                <h1 style="margin: 0;">⚠️ Unsafe Action Detected</h1>
+                <h1 style="margin: 0;">[!] Unsafe Action Detected</h1>
             </div>
             
             <div style="background-color: #f9f9f9; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
@@ -96,7 +96,7 @@ async def send_email_alert(
     """
     
     text_content = f"""
-    ⚠️ UNSAFE ACTION DETECTED ⚠️
+    *** UNSAFE ACTION DETECTED ***
     
     Action: {action}
     Confidence: {confidence:.1%}

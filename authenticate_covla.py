@@ -30,14 +30,14 @@ def authenticate_with_token():
         # Test authentication
         from huggingface_hub import whoami
         user_info = whoami()
-        print(f"\n✓ Successfully authenticated as: {user_info['name']}")
+        print(f"\n[OK] Successfully authenticated as: {user_info['name']}")
         
         # Save token for future use
         print("\nSaving token for future use...")
         try:
             from huggingface_hub import login
             login(token)
-            print("✓ Token saved successfully!")
+            print("[OK] Token saved successfully!")
         except Exception as e:
             print(f"⚠ Could not save token: {e}")
             print("You may need to authenticate again next time.")
@@ -63,7 +63,7 @@ def test_dataset_access():
         print("Loading CoVLA-Dataset-Mini (for testing)...")
         dataset = load_dataset("turing-motors/CoVLA-Dataset-Mini")
         
-        print(f"✓ Successfully loaded dataset!")
+        print(f"[OK] Successfully loaded dataset!")
         print(f"  Available splits: {list(dataset.keys())}")
         
         if 'train' in dataset and len(dataset['train']) > 0:
@@ -86,11 +86,11 @@ def main():
     try:
         from huggingface_hub import whoami
         user_info = whoami()
-        print(f"✓ Already authenticated as: {user_info['name']}")
+        print(f"[OK] Already authenticated as: {user_info['name']}")
         
         # Test dataset access
         if test_dataset_access():
-            print("\n🎉 Everything is set up correctly!")
+            print("\nEverything is set up correctly!")
             print("You can now run: python train.py")
             return
         
@@ -101,15 +101,15 @@ def main():
     if authenticate_with_token():
         # Test dataset access
         if test_dataset_access():
-            print("\n🎉 Setup complete! You can now use the CoVLA dataset.")
+            print("\nSetup complete! You can now use the CoVLA dataset.")
             print("\nNext steps:")
             print("1. Run: python test_covla_dataset.py")
             print("2. Run: python train.py")
         else:
-            print("\n❌ Authentication succeeded but dataset access failed.")
+            print("\n[X] Authentication succeeded but dataset access failed.")
             print("Please check the license terms acceptance.")
     else:
-        print("\n❌ Authentication failed. Please try again.")
+        print("\n[X] Authentication failed. Please try again.")
 
 if __name__ == '__main__':
     main()

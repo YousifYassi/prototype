@@ -7,7 +7,7 @@ import sys
 
 def check_python_packages():
     """Check if required Python packages are installed"""
-    print("🐍 Checking Python packages...")
+    print("[*] Checking Python packages...")
     required_packages = [
         'fastapi', 'uvicorn', 'torch', 'torchvision', 'cv2', 
         'yaml', 'sqlalchemy', 'jwt', 'passlib', 'aiosmtplib'
@@ -24,46 +24,46 @@ def check_python_packages():
                 __import__('jwt')
             else:
                 __import__(package)
-            print(f"  ✅ {package}")
+            print(f"  [OK] {package}")
         except ImportError:
-            print(f"  ❌ {package} - NOT INSTALLED")
+            print(f"  [X] {package} - NOT INSTALLED")
             missing.append(package)
     
     if missing:
-        print(f"\n⚠️  Missing packages: {', '.join(missing)}")
+        print(f"\n[!] Missing packages: {', '.join(missing)}")
         print("Install with: pip install -r requirements.txt && pip install -r backend/requirements.txt")
         return False
     return True
 
 def check_model():
     """Check if trained model exists"""
-    print("\n🤖 Checking AI model...")
+    print("\n[*] Checking AI model...")
     model_path = "checkpoints/best_model.pth"
     if os.path.exists(model_path):
-        print(f"  ✅ Model found: {model_path}")
+        print(f"  [OK] Model found: {model_path}")
         return True
     else:
-        print(f"  ❌ Model not found: {model_path}")
+        print(f"  [X] Model not found: {model_path}")
         print("  Train the model first with: python train.py")
         return False
 
 def check_config():
     """Check if config file exists"""
-    print("\n⚙️  Checking configuration...")
+    print("\n[*] Checking configuration...")
     if os.path.exists("config.yaml"):
-        print("  ✅ config.yaml found")
+        print("  [OK] config.yaml found")
         return True
     else:
-        print("  ❌ config.yaml not found")
+        print("  [X] config.yaml not found")
         return False
 
 def check_backend_env():
     """Check backend environment variables"""
-    print("\n🔐 Checking backend environment...")
+    print("\n[*] Checking backend environment...")
     env_file = "backend/.env"
     
     if not os.path.exists(env_file):
-        print(f"  ⚠️  {env_file} not found")
+        print(f"  [!] {env_file} not found")
         print("  Copy backend/.env.example to backend/.env and configure it")
         return False
     
@@ -79,48 +79,48 @@ def check_backend_env():
     all_ok = True
     for var, value in critical.items():
         if value and value != 'your-' in value:
-            print(f"  ✅ {var} configured")
+            print(f"  [OK] {var} configured")
         else:
-            print(f"  ⚠️  {var} not configured")
+            print(f"  [!] {var} not configured")
             all_ok = False
     
     return all_ok
 
 def check_frontend():
     """Check if frontend is set up"""
-    print("\n⚛️  Checking frontend...")
+    print("\n[*] Checking frontend...")
     
     if not os.path.exists("frontend/node_modules"):
-        print("  ❌ Frontend dependencies not installed")
+        print("  [X] Frontend dependencies not installed")
         print("  Run: cd frontend && npm install")
         return False
     
-    print("  ✅ Frontend dependencies installed")
+    print("  [OK] Frontend dependencies installed")
     
     if not os.path.exists("frontend/.env"):
-        print("  ⚠️  frontend/.env not found")
+        print("  [!] frontend/.env not found")
         print("  Copy frontend/.env.example to frontend/.env and configure it")
         return False
     
-    print("  ✅ Frontend environment configured")
+    print("  [OK] Frontend environment configured")
     return True
 
 def check_database():
     """Check if database is initialized"""
-    print("\n🗄️  Checking database...")
+    print("\n[*] Checking database...")
     
     db_file = "backend/workplace_safety.db"
     if os.path.exists(db_file):
-        print(f"  ✅ Database exists: {db_file}")
+        print(f"  [OK] Database exists: {db_file}")
         return True
     else:
-        print(f"  ⚠️  Database not initialized")
+        print(f"  [!] Database not initialized")
         print("  Run: python setup_database.py")
         return False
 
 def main():
     print("=" * 60)
-    print("🔍 Workplace Safety Monitoring - Setup Check")
+    print("Workplace Safety Monitoring - Setup Check")
     print("=" * 60)
     print()
     
@@ -134,24 +134,24 @@ def main():
     ]
     
     print("\n" + "=" * 60)
-    print("📊 Summary")
+    print("Summary")
     print("=" * 60)
     
     all_passed = True
     for name, passed in checks:
-        status = "✅ PASS" if passed else "❌ FAIL"
+        status = "[PASS]" if passed else "[FAIL]"
         print(f"{status} - {name}")
         if not passed:
             all_passed = False
     
     print()
     if all_passed:
-        print("🎉 All checks passed! You're ready to start the application.")
+        print("All checks passed! You're ready to start the application.")
         print()
         print("Start backend:  python start_backend.py")
         print("Start frontend: cd frontend && npm run dev")
     else:
-        print("⚠️  Some checks failed. Please fix the issues above.")
+        print("[!] Some checks failed. Please fix the issues above.")
         print("\nFor detailed setup instructions, see:")
         print("  WORKPLACE_SAFETY_APP_SETUP.md")
     
@@ -161,6 +161,6 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(f"\n❌ Error during setup check: {e}")
+        print(f"\n[X] Error during setup check: {e}")
         sys.exit(1)
 

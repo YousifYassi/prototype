@@ -52,7 +52,7 @@ setup:
 		echo "✓ frontend/.env already exists"; \
 	fi
 	@echo ""
-	@echo "⚠️  Remember to configure:"
+	@echo "[!] Remember to configure:"
 	@echo "  - backend/.env: Add SMTP credentials"
 	@echo "  - frontend/.env: Add Google Client ID"
 

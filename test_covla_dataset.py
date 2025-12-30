@@ -24,16 +24,16 @@ def test_covla_dataset():
             use_mini=True
         )
         
-        print(f"   ✓ Dataset loaded successfully")
-        print(f"   ✓ Number of samples: {len(dataset)}")
+        print(f"   [OK] Dataset loaded successfully")
+        print(f"   [OK] Number of samples: {len(dataset)}")
         
         if len(dataset) > 0:
             # Test loading a sample
             print("2. Testing sample loading...")
             video_tensor, label = dataset[0]
-            print(f"   ✓ Video tensor shape: {video_tensor.shape}")
-            print(f"   ✓ Label: {label}")
-            print(f"   ✓ Expected shape: (num_frames, channels, height, width)")
+            print(f"   [OK] Video tensor shape: {video_tensor.shape}")
+            print(f"   [OK] Label: {label}")
+            print(f"   [OK] Expected shape: (num_frames, channels, height, width)")
             
             # Test dataloader creation
             print("3. Testing dataloader creation...")
@@ -46,10 +46,10 @@ def test_covla_dataset():
             
             batch = next(iter(dataloader))
             videos, labels = batch
-            print(f"   ✓ Batch videos shape: {videos.shape}")
-            print(f"   ✓ Batch labels shape: {labels.shape}")
+            print(f"   [OK] Batch videos shape: {videos.shape}")
+            print(f"   [OK] Batch labels shape: {labels.shape}")
             
-        print("\n✓ CoVLA Dataset integration test PASSED!")
+        print("\n[OK] CoVLA Dataset integration test PASSED!")
         return True
         
     except Exception as e:
@@ -76,20 +76,20 @@ def test_config_integration():
         with open('config.yaml', 'r') as f:
             config = yaml.safe_load(f)
         
-        print(f"✓ Config loaded successfully")
-        print(f"✓ Dataset name: {config['dataset']['name']}")
+        print(f"[OK] Config loaded successfully")
+        print(f"[OK] Dataset name: {config['dataset']['name']}")
         
         if config['dataset']['name'] == 'covla':
-            print("✓ Using CoVLA dataset configuration")
+            print("[OK] Using CoVLA dataset configuration")
             
             # Test dataloader creation with config
             print("4. Testing dataloader creation with config...")
             train_loader, val_loader = create_dataloaders(config)
             
-            print(f"   ✓ Train loader created: {len(train_loader.dataset)} samples")
-            print(f"   ✓ Val loader created: {len(val_loader.dataset)} samples")
+            print(f"   [OK] Train loader created: {len(train_loader.dataset)} samples")
+            print(f"   [OK] Val loader created: {len(val_loader.dataset)} samples")
             
-            print("\n✓ Config integration test PASSED!")
+            print("\n[OK] Config integration test PASSED!")
             return True
         else:
             print("ℹ Config is set to use BDD100K dataset, not CoVLA")
@@ -118,13 +118,13 @@ def main():
     print(f"Config Integration Test: {'PASSED' if test2_passed else 'FAILED'}")
     
     if test1_passed and test2_passed:
-        print("\n🎉 All tests PASSED! CoVLA dataset is ready to use.")
+        print("\nAll tests PASSED! CoVLA dataset is ready to use.")
         print("\nNext steps:")
         print("1. Run: python train.py (to start training with CoVLA dataset)")
         print("2. Monitor training progress with TensorBoard")
         print("3. Adjust config.yaml parameters as needed")
     else:
-        print("\n❌ Some tests FAILED. Please check the errors above.")
+        print("\n[X] Some tests FAILED. Please check the errors above.")
         print("\nTo switch back to BDD100K dataset:")
         print("1. Change 'name: covla' to 'name: bdd100k' in config.yaml")
         print("2. Make sure BDD100K data is in datasets/bdd100k/")

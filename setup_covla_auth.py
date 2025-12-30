@@ -11,7 +11,7 @@ def check_huggingface_auth():
     try:
         from huggingface_hub import whoami
         user_info = whoami()
-        print(f"✓ Authenticated as: {user_info['name']}")
+        print(f"[OK] Authenticated as: {user_info['name']}")
         return True
     except Exception as e:
         print(f"✗ Not authenticated: {e}")
@@ -60,7 +60,7 @@ def test_dataset_access():
         # Try to load the mini dataset first
         print("Testing CoVLA-Dataset-Mini...")
         dataset = load_dataset("turing-motors/CoVLA-Dataset-Mini")
-        print(f"✓ Successfully loaded mini dataset!")
+        print(f"[OK] Successfully loaded mini dataset!")
         print(f"  Available splits: {list(dataset.keys())}")
         
         # Show sample info
@@ -96,12 +96,12 @@ def main():
     can_access = test_dataset_access()
     
     if can_access:
-        print("\n🎉 Setup complete! You can now use the CoVLA dataset.")
+        print("\nSetup complete! You can now use the CoVLA dataset.")
         print("\nNext steps:")
         print("1. Run: python test_covla_dataset.py")
         print("2. Run: python train.py")
     else:
-        print("\n❌ Setup incomplete. Please follow the authentication steps above.")
+        print("\n[X] Setup incomplete. Please follow the authentication steps above.")
 
 if __name__ == '__main__':
     main()

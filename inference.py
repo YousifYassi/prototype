@@ -245,7 +245,7 @@ class UnsafeActionDetector:
         # Console alert
         if 'console' in self.alert_config['methods']:
             console_msg = (
-                f"⚠️  UNSAFE ACTION DETECTED [{severity_label}]: {action_name} "
+                f"[!] UNSAFE ACTION DETECTED [{severity_label}]: {action_name} "
                 f"(Confidence: {confidence:.2%}) at {timestamp}"
             )
             if regulation_violation:

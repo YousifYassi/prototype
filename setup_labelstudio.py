@@ -154,7 +154,7 @@ def main():
             print(f"  {sys.executable} -m pip install -r labelstudio_requirements.txt")
             return
     else:
-        print("\n✓ Label Studio is already installed")
+        print("\n[OK] Label Studio is already installed")
     
     # Create import file
     print("\nCreating Label Studio import file...")
